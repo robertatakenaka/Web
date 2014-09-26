@@ -20,7 +20,8 @@
      4001^p - PID 
      4001^t - text language
 -->
-    <field action="replace" tag="5000"><pft>replace(v5000,' ^','^')</pft></field>
+    <field action="replace" tag="5000" split="occ"><pft>(replace(v5000,' ^','^'))</pft></field>
+
     <!-- campo v241, presente no registro h de um artigo regular -->
     <label>RELATED_TO_PRESSRELEASE</label>
     <field action="replace" tag="241" split="occ"><pft>(if v5000^t='pr' then if p(v5000^i) then v5000/ fi fi)</pft></field>
@@ -74,7 +75,6 @@
 <function name="getIssueRelatedToPressRelease" action="replace" tag="5000" split="occ">
     <!-- pid do press release do n�mero -->
     <!-- Encontra o pid do issue press release, dado o pid de um issue regular -->
-    <field action="replace" tag="5000"><pft>replace(v5000,' ^','^')</pft></field>
     <do task="search">
         <parm name="db">ARTIGO</parm>
         <parm name="expression"><pft>'Y',s(v5000^*)*1.13,'$'</pft></parm>       
