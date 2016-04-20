@@ -255,6 +255,9 @@
 			   <parm name="expression"><pft>'SM='v4901,'$'</pft></parm>
 			   <parm name="count">1</parm>
 			   <loop>
+			   		<call name="skip_epub"><pft>mfn</pft></call>
+					<flow action="skip"><pft>v9990</pft></flow>
+
 					<field action="replace" tag="4902"><pft>v880</pft></field>
 					<field action="export" tag="list">4902</field>
 				</loop>	
@@ -314,83 +317,95 @@
 <!--  Otherwise, returns nothing.                                                 -->
 <!-- ============================================================================ -->
 <function name="GetPreviousArticle" action="replace" tag="4900">
-	<!--display><pft>'v4900 = ',v4900,'<br>'</pft></display-->
-	<field action="replace" tag="5000"><pft>v4900^x</pft></field>
-	<field action="replace" tag="4900"><pft>'SM=',s(v4900^*)*1.17,'-',s(v4900^*)*18</pft></field>
+ 	<call name="GetPreviousArticleInCurrentIssue"><pft>v4900</pft></call>
+	<flow action="jump"><pft>if p(v7085) then 'found' fi</pft></flow>
 
+	<call name="GetPreviousArticleInPreviousIssue"><pft>if ref(['ARTIGO']l(['ARTIGO'],'HR=',v4900),v32)='ahead' then 'A's(v4900^*)*1.17 fi</pft></call>
+
+   <label>found</label>
+	<return action="replace" tag="7085"><pft>v7085</pft></return>
+</function>
+
+<function name="GetPreviousArticleInCurrentIssue" action="replace" tag="4900">
 	<do task="keyrange">
 		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v4900</pft></parm>
-		<!--parm name="count">2</parm-->
+		<parm name="from"><pft>'HR=',v4900</pft></parm>
+		<parm name="to"><pft>'HR=',v4900*0.17,'00000'</pft></parm>
+
+		<!-- from: HR=S1415-790X2015000600045 -->
+		<!-- to:   HR=S1415-790X20150006 -->
+
 		<parm name="reverse">On</parm>
 
 		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!-- '/,'from:',v4900/</pft></display>
-			<display><pft>'curr: ',v4901/,'-->'/</pft></display>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
 
-			<flow action="skip">
-				<pft>
-					/* The first key found whose pid isn't the current article's  */
-					/* pid stops the loop.                                        */
-					/* if article has new-pid (v222) then execute next loop       */
-					if ref(['ARTIGO']l(['ARTIGO'],v4901),@PROC_SPLIT_MST.PFT,v222)='' then 
-						if p(v4901) and instr(v4901,v4900) = 0 then 'Quit' fi
-					fi
-				</pft>
-			</flow>
+			<field action="export" tag="list">v4901</field>
+			<flow action="skip">Quit</flow>
 		</loop>	
 	</do>	
+	<return action="replace" tag="7085"><pft>v4901</pft></return>
+</function>
 
-	<display><pft>'Isis_Key (v4901): ', v4901/</pft></display>
-	<display><pft>'Isis_Key (v4900): ', v4900/,v4900*0.21/</pft></display>
-	
-	<field action="replace" tag="7085">
-		<pft>
-			/* The pid of the key must be different from the pid of the current issue */
-			/* and the issue must be equal.                                           */
-			if p(v4901) and
-			   instr(v4901, v4900) = 0 and 
-			   instr(v4901, v4900*0.21) > 0 then,
- 				,v4901*3,
-			fi,
-		</pft>
-	</field>
-    <display><pft>,v4901*3/,,'Isis_Key (v7085): ', v7085,/</pft></display>
-	
-	<flow action="jump"><pft>if p(v7085) or a(v5000) then 'FOUND_PREV_ARTICLE' fi</pft></flow>
-	<field action="replace" tag="4900"><pft>|SM=|v5000*1</pft></field>
-	<do task="keyrange">
+<function name="GetIssueLastArticle" action="replace" tag="4900">
+    <!-- 4900 = issue PID -->
+    <!-- from: A1415-790X20150006 -->
+    <do task="keyrange">
 		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v4900,'zzz'</pft></parm>
+		<parm name="from"><pft>'HR=S',v4900*1,'99999'</pft></parm>
+		<parm name="to"><pft>'HR=S',v4900*1</pft></parm>
 		<parm name="reverse">On</parm>
-		<parm name="count">1</parm>
 
 		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!-- ',v4900/</pft></display>
-			<display><pft>'left(v4900, size(v4900) - 5)',left(v4900, size(v4900) - 5)/</pft></display>
-			<display><pft>v4901,'-->'/</pft></display>
-			<field action="replace" tag="5001">
-				<pft>
-					if p(v4901) then
-						,if instr(v4901, left(v4900, size(v4900) - 5)) > 0 then,
-							,mid(v4901*3, 1, 23),
-						,fi
-					fi,
-				</pft>
-			</field>
-			<field action="export" tag="5001">5001</field>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
+			<field action="replace" tag="7085"><pft>ref(v1003^m,v880)</pft></field>
+			<field action="export" tag="list">7085</field>
+			<flow action="skip">Quit</flow>
 		</loop>	
 	</do>	
-	<field action="replace" tag="7085"><pft>v5001</pft></field>
-	<label>FOUND_PREV_ARTICLE</label>
-	<field action="replace" tag="7085"><pft>if p(v7085) then 'S',mid(v7085,1,17),v7085*18 fi</pft></field>
+	<return action="replace" tag="7085"><pft>v7085</pft></return>
+</function>
 
+<function name="GetPreviousArticleInPreviousIssue" action="replace" tag="4900">
+    <!-- v4900: A1415-790X20150006 -->
+    <do task="keyrange">
+		<parm name="db">ARTIGO</parm>
+		<parm name="from"><pft>v9400</pft></parm>
+		<parm name="to"><pft>v9400*0.10</pft></parm>
+		<parm name="reverse">On</parm>
+
+		<!-- from: A1415-790X20150006 -->
+		<!-- to:   A1415-790X -->
+
+		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
+		
+		<loop>
+			<field action="import" tag="4900">4900</field>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
+
+			<call name="GetIssueLastArticle"><pft>v4901</pft></call>
+
+			<field action="export" tag="list">7085</field>
+			<flow action="skip"><pft>if p(v7085) then 'Quit' fi</flow>
+		</loop>	
+	</do>	
 	<return action="replace" tag="7085"><pft>v7085</pft></return>
 </function>
 
@@ -407,81 +422,105 @@
 <!--  returns nothing.                                                            -->
 <!-- ============================================================================ -->
 <function name="GetNextArticle" action="replace" tag="4900">
-	<!--display><pft>'v4900 = ',v4900,'<br>'</pft></display-->
+	<call name="GetNextArticleInCurrentIssue"><pft>v4900</pft></call>
+	<flow action="jump"><pft>if p(v7095) then 'found' fi</pft></flow>
 
-	<field action="replace" tag="5000"><pft>v4900^x</pft></field>
-	<field action="replace" tag="4900"><pft>'SM=',s(v4900^*)*1.17,'-',s(v4900^*)*18</pft></field>
-	<do task="keyrange">
-		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v4900,'zzzzz'</pft></parm>
-		<!--parm name="count">1</parm-->
-		
-		<field action="define" tag="4901">Isis_Key</field>
-		
-		<loop>
-			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!-- '/,'from:',v4900/</pft></display>
-			<display><pft>'curr: ',v4901/,'-->'/</pft></display>
-			<flow action="skip">
-				<pft>
-					/* The first key found whose pid isn't the current article's  */
-					/* pid stops the loop.                                        */
-					/* if article has new-pid (v222) then execute next loop       */
-					if ref(['ARTIGO']l(['ARTIGO'],v4901),@PROC_SPLIT_MST.PFT,v222)='' then 
-						if p(v4901) and instr(v4901,v4900) = 0 then 'Quit' fi
-					fi
-				</pft>
-			</flow>
-		</loop>	
-	</do>	
-	<!--display><pft>'Isis_Key (v4901): ', v4901,'<br>'</pft></display-->
-	
-	<field action="replace" tag="7095">
-		<pft>
-			/* The pid of the key must be different from the pid of the current article */
-			/* and the issue must be equal.                                             */
-			if p(v4901) and ref(['ARTIGO']l(['ARTIGO'],v4901),@PROC_SPLIT_MST.PFT,v222)='' and
-			   instr(v4901, v4900) = 0 and
-			   instr(v4901, left(v4900, size(v4900) - 5)) > 0 then,
- 				,mid(v4901*3, 1, 23),				
-			fi,
-		</pft>
-	</field>
-	<!--display><pft>'Isis_Key (v7095): ', v7095,'<br>'</pft></display-->
+	<call name="GetNextArticleInNextIssue"><pft>if ref(['ARTIGO']l(['ARTIGO'],'HR=',v4900),v32)='ahead' then 'A's(v4900^*)*1.17 fi</pft></call>
 
-	<flow action="jump"><pft>if p(v7095) or a(v5000) then 'FOUND_NEXT_ARTICLE' fi</pft></flow>
-	<field action="replace" tag="4900"><pft>|SM=|v5000*1</pft></field>
-	<do task="keyrange">
-		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v4900</pft></parm>
-		<parm name="count">1</parm>
-
-		<field action="define" tag="4901">Isis_Key</field>
-		
-		<loop>
-			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!-- '/,'from:',v4900/</pft></display>
-			<display><pft>'curr: ',v4901/,'-->'/</pft></display>
-			<field action="replace" tag="5001">
-				<pft>
-					/* The pid of the key must be different from the pid of the current article */
-					/* and the ISSN must be equal.                                             */
-					if p(v4901) then
-						,if instr(v4901, left(v4900, size(v4900) - 5)) > 0 then,
-							,mid(v4901*3, 1, 23),
-						,fi
-					fi,
-				</pft>
-			</field>
-			<field action="export" tag="5001">5001</field>
-		</loop>	
-	</do>	
-	<field action="replace" tag="7095"><pft>v5001</pft></field>
-	<label>FOUND_NEXT_ARTICLE</label>
-	<field action="replace" tag="7095"><pft>if p(v7095) then 'S',v7095*0.17,v7095*18 fi</pft></field>
-
+   	<label>found</label>
 	<return action="replace" tag="7095"><pft>v7095</pft></return>
+</function>
+
+<!-- ============================================================================ -->
+<!--  function GetNextArticleInCurrentIssue                                                     -->
+<!--                                                                              -->
+<!--  Gets the pid (issnyyyynnnnaaaaa) of the next article of the current article.-->
+<!--                                                                              -->
+<!--  Argument:                                                                   -->
+<!--     The pid (issnyyyynnnnaaaaa) of the current article.                      -->
+<!--                                                                              -->
+<!--  Return value:                                                               -->
+<!--     If found, returns the pid of the next article in the tag 7095. Otherwise -->
+<!--  returns nothing.                                                            -->
+<!-- ============================================================================ -->
+<function name="GetNextArticleInCurrentIssue" action="replace" tag="4900">
+	<do task="keyrange">
+		<parm name="db">ARTIGO</parm>
+		<parm name="from"><pft>'HR=',v4900,'9'</pft></parm>
+		<parm name="to"><pft>'HR=',v4900*0.21,'999999'</pft></parm>
+
+		<!-- from: HR=S1415-790X20150006000459 -->
+		<!-- to:   HR=S1415-790X20150006999999 -->
+
 		
+		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
+		
+		<loop>
+			<field action="import" tag="4900">4900</field>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
+			<field action="export" tag="list">v4901</field>
+			<flow action="skip">Quit</flow>
+		</loop>	
+	</do>	
+	<return action="replace" tag="7095"><pft>v4901</pft></return>
+</function>
+
+<function name="GetIssueFirstArticle" action="replace" tag="4900">
+    <!-- 4900 = issue PID -->
+    <!-- from: A1415-790X20150006 -->
+    <do task="keyrange">
+		<parm name="db">ARTIGO</parm>
+		<parm name="from"><pft>'HR=S',v4900*1,'00001'</pft></parm>
+		<parm name="to"><pft>'HR=S',v4900*1,'99999'</pft></parm>
+		
+		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
+		
+		<loop>
+			<field action="import" tag="4900">4900</field>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
+			<field action="replace" tag="7095"><pft>ref(v1003^m,v880)</pft></field>
+			<field action="export" tag="list">7095</field>
+			<flow action="skip">Quit</flow>
+		</loop>	
+	</do>	
+	<return action="replace" tag="7095"><pft>v7095</pft></return>
+</function>
+
+<function name="GetNextArticleInNextIssue" action="replace" tag="4900">
+    <!-- v4900: A1415-790X20150006 -->
+    <do task="keyrange">
+		<parm name="db">ARTIGO</parm>
+		<parm name="from"><pft>v9400</pft></parm>
+		<parm name="to"><pft>v9400*0.10,'99999999'</pft></parm>
+		
+		<!-- from: A1415-790X20150006 -->
+		<!-- to:   A1415-790X99999999 -->
+
+		<field action="define" tag="4901">Isis_Key</field>
+		<field action="define" tag="1003">Isis_Posting</field>
+		
+		<loop>
+			<field action="import" tag="4900">4900</field>
+			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
+
+			<call name="GetIssueFirstArticle"><pft>v4901</pft></call>
+
+			<field action="export" tag="list">7095</field>
+			<flow action="skip"><pft>if p(v7095) then 'Quit' fi</flow>
+		</loop>	
+	</do>	
+	<return action="replace" tag="7095"><pft>v7095</pft></return>
 </function>
 
 <!-- Funcoes de sci_common.xis -->
@@ -534,6 +573,7 @@
 					,replace(replace(v7047,'"',''),'&','&amp;') 
 		'</NEW_HOME>'/,
 		fi
+		|<BLOCK_FUTURE_EPUB>|v7064|</BLOCK_FUTURE_EPUB>|
 		|<LICENSE>|v7051|</LICENSE>|
 
 	</pft></display>
@@ -1031,50 +1071,11 @@
 	<field action="delete" tag="list">7085,7090,7095</field>
 	<field action="import" tag="list">3900</field>
 
-	<!--display><pft>| v4900 = |v4900</pft></display-->
 	<field action="replace" tag="3000"><pft>v4900^l</pft></field>
 	<field action="replace" tag="3003"><pft>v4900^i</pft></field>
 	
-	<!--call name="GetNotPrintedIssues"><pft>mid(v4900^p,2,9)</pft></call-->
-	<field action="replace" tag="5000"><pft>(if instr(v3900,mid(v4900^p[1],2,17))>0 then v3900,'^z',f(iocc,1,0),break fi)</pft></field>
-
-	<field action="replace" tag="5001">
-		<pft>
-			if p(v5000) then 
-				,if val(v5000^z)>1 then 
-					(if iocc=val(v5000^z[1])-1 and v3900^t=v5000^t[1] then
-						,'^aS',v3900^*,
-					fi)
-				,fi
-				,if val(v5000^z) < nocc(v3900) then 
-					(if iocc=val(v5000^z[1])+1 and v3900^t=v5000^t[1] then
-						,'^bS',v3900^*,
-					fi)
-				,fi
-			,fi,
-		</pft>
-	</field>
-
-	<call name="GetPreviousArticle"><pft>v4900^p,|^x|v5001^a</pft></call>
-	<call name="GetNextArticle"><pft>v4900^p,|^x|v5001^b</pft></call>
-
-	<!--display>
-		<pft>
-		/*
-		   If navigation is based in abstract and there is no abstract
-		   for the previous article, then the previous abstract does not 
-		   exist. So, delete tag 7085.
-		*/			
-		if s(mpu,v4900^t,mpl) = 'ABS' then
-			if l(['ARTIGO'],'HR=',v7085) = 0 then
-				'DELETE v7085 by LOOKUP'
-			else
-				ref (['ARTIGO']l(['ARTIGO'],'HR=',v7085), 
-					if a(v83) then 'DELETE v7085' fi)
-			fi
-		fi
-		</pft>
-	</display-->
+	<call name="GetPreviousArticle"><pft>v4900^p</pft></call>
+	<call name="GetNextArticle"><pft>v4900^p</pft></call>
 
 	<field action="delete" tag="7085">
 		<pft>
@@ -1093,24 +1094,6 @@
 		fi
 		</pft>
 	</field>
-	
-	<!--display>
-		<pft>
-	    /*
-		   If navigation is based in abstract and there is no abstract
-		   for the next article, then the next abstract does not exist.
-		   So, delete tag 7095.
-		*/
-		if s(mpu,v4900^t,mpl) = 'ABS' then
-			if l(['ARTIGO'],'HR=',v7095) = 0 then
-				'DELETE v7095 by LOOKUP'
-			else
-				ref (['ARTIGO']l(['ARTIGO'],'HR=',v7095), 
-					if a(v83) then 'DELETE v7095' fi)
-			fi
-		fi
-		</pft>
-	</display-->
 	
 	<field action="delete" tag="7095">
 		<pft>
@@ -1144,12 +1127,6 @@
 			if p(v7085) then '   <PREVIOUS PID="', v7085, '"><![CDATA[', fi,
 		</pft>
 	</display>
-	
-	<!--call name="DisplayTextInAvailableLang">
-		<pft>
-    	ref (['ARTIGO']l(['ARTIGO'],'HR=',v7085),(v12/))
-		</pft>
-	</call-->
 	
 	<proc>
     	<pft>
@@ -3367,17 +3344,17 @@ fi
 <!--  article which pid has the last 5 digits equal to '00001'					 -->
 <!-- ============================================================================ -->
 <function name="issueHasArticles" action="replace" tag="4901">
-        <field action="replace" tag="9036"><pft>if l(['ARTIGO']'sm=',v4901,'-001')>0 then v4901 fi</pft></field>
-        <flow action="jump"><pft>if p(v9036) then 'EXIST' fi</pft></flow>
         <do task="search">
            <parm name="db">ARTIGO</parm>
            <parm name="expression"><pft>'SM='v4901,'$'</pft></parm>
-           <parm name="count">1</parm>
-
+           
            <loop>
                         <display><pft>@PROC_SPLIT_MST.PFT</pft></display>
+				<call name="skip_epub"><pft>mfn</pft></call>
+				<flow action="skip"><pft>v9990</pft></flow>
                         <field action="replace" tag="4902"><pft>v121</pft></field>
                         <field action="export" tag="4902">4902</field>
+				<flow action="skip">Quit</flow>
                 </loop>
         </do>
 
@@ -3642,7 +3619,7 @@ fi
 	<field action="import"	tag="list">241,237,41</field>
 
 	<!-- documento: errata | relacionado: artigo -->
-	<call name="FindRelatedKeys"><pft>if a(v41) and p(v241) then (if v241^t<>'pr' then v880[1],break fi) fi</pft></call>
+	<call name="FindRelatedArticleIndexes"><pft>if a(v41) and p(v241) then (if v241^t<>'pr' then v880[1],break fi) fi</pft></call>
 	<!-- documento: press release | relacionado: artigo -->
 	<field action="add"	tag="9241"><pft>if p(v41) then 'PR'v880 fi</pft></field>
 	<call name="RelatedDocument"><pft>if a(v41) then if p(v9241) then '^tcorrected-article^e',(v9241+| or |) fi fi</pft></call>
@@ -3663,6 +3640,10 @@ fi
 
         <loop>
         	<display><pft>@PROC_SPLIT_MST.PFT,</pft></display>
+        	
+        	<call name="skip_epub"><pft>mfn</pft></call>
+    		<flow action="skip"><pft>v9990</pft></flow>
+
             <field action="import" tag="list">4000</field>
             <field action="replace" tag="9132"><pft>v131,v132</pft></field>
             <field action="replace" tag="9032"><pft>v32,if p(v9132) then ' Suppl',if v9132<>'0' then  ' ',v9132, fi, fi</pft></field>
@@ -3694,44 +3675,44 @@ fi
     </display> 
 </function>
 
-<function name="FindRelatedKeys" action="replace" tag="4000">
+<function name="FindRelatedArticleIndexes" action="replace" tag="4000">
 	<field action="replace"	tag="880"><pft>v4000</pft></field>
 	<field action="import"	tag="list">241</field>
 
-	<call name="FindRelatedKeysByDOI">
-        <pft>
-        	(if v241^n='doi' then v241/ fi)
-        </pft>
-    </call>
+	<call name="FindRelatedArticleIndexesByDOI"><pft>(if v241^n='doi' then v241/ fi)</pft></call>
     
 	<field action="replace"	tag="9241" split="occ"><pft>(v9241/),(if v241^n='doi' then 'DOI='v241^i/ else if v241^n='pid' then |HR=|v241^i/ fi fi)</pft></field>
 	
     <field action="export" tag="list">9241</field>
 </function>
 
-<function name="FindRelatedKeysByDOI" action="replace" tag="241">
+<function name="FindRelatedArticleIndexesByDOI" action="replace" tag="241">
 	<field action="import" tag="list">880</field>
 	<do task="search">
 		<parm name="db">ARTIGO</parm>
-		<parm name="expression">DOI=$</parm>
+		<parm name="expression"><pft>'DOI',v241^i</parm>
 		<parm name="count">1</parm>
 
         <loop>
         	<display><pft>@PROC_SPLIT_MST.PFT,</pft></display>
-        	<field action="replace"	tag="9999">DOI_IS_INDEXED</field>
-            <field action="export" tag="list">9999</field>
+        	<call name="skip_epub"><pft>mfn</pft></call>
+    		<flow action="skip"><pft>v9990</pft></flow>
+
+        	<field action="replace"	tag="9241"><pft>'DOI',v241^i</pft></field>
+            <field action="replace"	tag="9999">DOI_IS_INDEXED</field>
+            <field action="export" tag="list">9999,9241</field>
         </loop>
     </do>
     <flow action="jump"><pft>v9999</pft></flow>
 	
 	<label>DOI_IS_NOT_INDEXED</label>
-    <call name="FindNotIndexedDOI"><pft>v880</pft></call>
+    <call name="AltFindRelatedArticleIndexesByDOI"><pft>v880</pft></call>
 
     <label>DOI_IS_INDEXED</label>
     <field action="export" tag="list">9241</field>
 </function>
 
-<function name="FindNotIndexedDOI" action="replace" tag="4000">
+<function name="AltFindRelatedArticleIndexesByDOI" action="replace" tag="4000">
 	<field action="replace"	tag="880"><pft>v4000[1]</pft></field>
 	<field action="import"	tag="list">241</field>
 
@@ -3777,4 +3758,36 @@ fi
 	<field action="export" tag="list">9241</field>
 </function>
 	
+<function name="configuration_var" action="replace" tag="9999">
+	<field action="statusfile" tag="1101">../htdocs/scielo.def.php</field>
+
+	<field action="replace" tag="1111"><pft>if v1101^s:'e' then cat('../htdocs/scielo.def.php') fi</pft></field>
+	<field action="replace" tag="1000" split="occ"><pft>if v1111:s(v9999,'=') then mid(v1111,instr(v1111,s(v9999,'='))+size(s(v9999,'=')),size(v1111)) fi</pft></field>
+	<field action="replace" tag="7979"><pft>if p(v1000) then v1000[1] fi</pft></field>
+	<field action="export" tag="list">7979</field>
+</function>
+	
+
+<function name="skip_epub" action="replace" tag="9999">
+	<field action="import" tag="list">7064</field>
+	<call name="configuration_var"><pft>if a(v7064) then 'BLOCK_FUTURE_EPUB' fi</pft></call>
+
+	<display><pft>'<!-- ',v7979,' ',v7064,' -->'</pft></display>
+	<flow action="jump"><pft>if v7064='1' or v7979='1' then else 'END-skip_epub' fi</pft></flow>
+
+	<do task="mfnrange">
+		<parm name="db">ARTIGO</parm>
+		<parm name="from"><pft>v9999</pft></parm>
+		<parm name="count">1</parm>
+		
+		<loop>	
+			<display><pft>@PROC_SPLIT_MST.PFT</pft></display>
+			<field action="replace" tag="9990"><pft>if p(v223) then if val(v223) > val(s(date)*0.8) then 'Next' fi fi</pft></field>
+			<display><pft>if v9990='Next' then '<!-- SKIP ',v880,' ',v223,'-->' fi</pft></display>
+			<field action="export" tag="list">9990</field>
+		</loop>
+	</do>
+	<field action="export" tag="list">9990</field>
+	<label>END-skip_epub</label>
+</function>
 

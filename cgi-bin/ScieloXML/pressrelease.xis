@@ -62,7 +62,9 @@
 		<parm name="db">ARTIGO</parm>
 		<parm name="expression"><pft>'PR'v5000</pft></parm>		
 
-		<loop>			
+		<loop>
+			<call name="skip_epub"><pft>mfn</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
 			<field action="export" tag="list">880</field>
 		</loop>	
 	</do>
@@ -104,6 +106,39 @@
 </function>
 
 
+<function name="PressReleaseArticleXML" action="replace" tag="880" split="occ">
+	<!-- lang -->
+	<field action="import" tag="list">3000</field>
+	<do task="search">
+		<parm name="db">ARTIGO</parm>
+		<parm name="expression"><pft>'PR',v880</pft></parm>
+		<parm name="count"><pft>1</pft></parm>
+
+		<loop>
+			<field action="replace" tag="9880"><pft>v880</pft></field>
+			<field action="export" tag="list">9880</field>
+
+			<call name="skip_epub"><pft>mfn</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+			
+			<field action="import" tag="list">3000</field>
+			<display><pft>
+				proc('a9241{',(if v241^t='pr' then v241^i,break fi),'{')
+				proc('a9242{',(if v12^l=v3000[1] then v12,break fi),'{')
+				,if v9242='' then ,proc('a9242{',v12[1],'{'), fi
+				if v9242<>'' then
+					'<article data="',v65,'" vol="',v882^v,'" num="',v882^n,'" sup="',v882^s,'" pid="',v880,'" prpid="',v9241,'">',/'<title lang="',v9242^l,'"><![CDATA[',v9242^*,']]></title>','</article>'/ 
+				fi
+			</pft></display>
+
+			<field action="replace" tag="9249"><pft>v880</pft></field>
+			<field action="export" tag="list">9249</field>
+		</loop>
+	</do>
+	<field action="export" tag="list">9249,9880</field>
+</function>
+
+
 <function name="getPressReleaseRelatedToJournal" action="replace" tag="5000" split="occ">
 
 	<!-- importar count do scielo.def.php -->
@@ -129,51 +164,39 @@
 		<field action="define" tag="1004">Isis_Postings</field>
 
 		<loop>
+
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
 			<field action="import" tag="list">3000</field>
 			<!-- PRESS RELEASE -->
+
 			<do task="mfnrange">
 				<parm name="db">ARTIGO</parm>
 				<parm name="from"><pft>v1003^m</pft></parm>
 				<parm name="count">1</parm>
 				<loop>
 					<field action="import" tag="list">3000</field>
-					<!-- <display><pft>v880</pft></display> -->
-
+					
 					<!-- VERIFICA SE EH PRESSRELEASE DE ARTIGO OU NUMERO -->
-					<do task="search">
-						<parm name="db">ARTIGO</parm>
-						<parm name="expression"><pft>'PR',v880</pft></parm>
-						
-						<loop>
-							<field action="import" tag="list">3000</field>
-							<display><pft>
-								proc('a9241{',(if v241^t='pr' then v241^i,break fi),'{')
-								proc('a9242{',(if v12^l=v3000[1] then v12,break fi),'{')
-								,if v9242='' then ,proc('a9242{',v12[1],'{'), fi
-								if v9242<>'' then
+					<call name="PressReleaseArticleXML"><pft>v880</pft></call>
 
-								 '<article data="',v65,'" vol="',v882^v,'" num="',v882^n,'" sup="',v882^s,'" pid="',v880,'" prpid="',v9241,'">',/'<title lang="',v9242^l,'"><![CDATA[',v9242^*,']]></title>','</article>'/ fi
-							</pft></display>
+					<!-- pode ser que exista o artigo p(v9880), mas o artigo está embargado a(v9242) -->
+					<flow action="skip"><pft>if p(v9880) and a(v9242) then 'Quit' fi</pft></flow>
 
-							<field action="replace" tag="9249"><pft>v880</pft></field>
-							<field action="export" tag="list">9249</field>
-						</loop>
-					</do>
-
+					<!-- if a(v9880) and a(v9242) then  press release de issue fi -->
 					<display><pft>
-                                    if v32<>'ahead' and v32<>'review' then
-					if a(v9249) then
-						,proc('a9242{',(if v12^l=v3000[1] then v12,break fi),'{')
-						,if v9242='' then ,proc('a9242{',v12[1],'{'), fi,
-						,if v9242<>'' then
-						'<issue data="',v65,'" vol="',v882^v,'" num="',v882^n,'" sup="',v882^s,'" pid="',v880,'" lang="',v9242^l,'">',/'<title lang="',v9242^l,'"><![CDATA[',v9242^*,']]></title>',/'</issue>'/ 
+						if v32<>'ahead' and v32<>'review' then
+							if a(v9249) then
+								,proc('a9242{',(if v12^l=v3000[1] then v12,break fi),'{')
+								,if v9242='' then ,proc('a9242{',v12[1],'{'), fi,
+								,if v9242<>'' then
+									'<issue data="',v65,'" vol="',v882^v,'" num="',v882^n,'" sup="',v882^s,'" pid="',v880,'" lang="',v9242^l,'">',/'<title lang="',v9242^l,'"><![CDATA[',v9242^*,']]></title>',/'</issue>'/ 
+								,fi
+							,fi
 						,fi
-					,fi
-,fi
 					</pft></display>
 				</loop>
-
-
 			</do>
 		</loop>
 	</do>
@@ -204,7 +227,11 @@
         <field action="define" tag="1003">Isis_Posting</field>
         <field action="define" tag="1004">Isis_Postings</field>
 
-          <loop>
+        <loop>
+
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
             <field action="import" tag="list">3000</field>
             <field action="import" tag="list">7009</field>
 
@@ -257,7 +284,11 @@
         <field action="define" tag="1003">Isis_Posting</field>
         <field action="define" tag="1004">Isis_Postings</field>
 
-          <loop>
+        <loop>
+
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
             <field action="import" tag="list">3000</field>
             <field action="import" tag="list">7009</field>
 
@@ -294,7 +325,7 @@
 		v4001^y
 		v4001^w
 	-->
-<field action="import" tag="list">7009/7060</field>
+	<field action="import" tag="list">7009/7060</field>
 	<!-- Create Article List
      4001^p - PID do issue regular
 	 4001^l - Interface Language 
@@ -302,6 +333,7 @@
 	 4001^s - Issue MFN -->
      <display><pft>'<!-- ',v4001,' -->'/</pft></display>
      <flow action="jump"><pft>if v4001^n='ahead' or v4001^n='review' then 'DONE' fi</pft></flow>
+
 	<!-- Encontra o pid do issue press release, dado o pid de um issue regular -->
 	<do task="search">
 		<parm name="db">ARTIGO</parm>
@@ -310,23 +342,19 @@
 
 		<loop>			
 			<field action="import" tag="list">4001</field>
-			
             <field action="replace" tag="9936"><pft>f(val(v36*4.3)+10000,2,0)</pft></field>
-
 			<field action="replace" tag="241"><pft>if v36*0.4=v4001^d and v31=v4001^v and v32=v4001^n and v131=v4001^w and v132=v4001^y then v35,v36*0.4,v9936*1.4 fi</pft></field>
 			<field action="export" tag="list">241</field>
 			<flow action="skip"><pft>if p(v241) then 'Quit' fi</pft></flow>
 		</loop>	
 	</do>
 	<flow action="jump"><pft>if a(v241) then 'DONE' fi</pft></flow>
-	<!-- consulta os artigos press release do numero press release e descobre se tem artigo relacionado ao numero como um todo -->
+
+	<!-- percorre press releases e descobre se é press release de um issue -->
 	<do task="keyrange">
 		<parm name="db">ARTIGO</parm>
 		<parm name="from"><pft>'HR=S',v241</pft></parm>		
 		<parm name="to"><pft>'HR=S',v241,'9999999999'</pft></parm>		
-
-
-
 		<parm name="posting"><pft>'ALL'</pft></parm>
 
 		<field action="define" tag="1001">Isis_Current</field>
@@ -336,13 +364,18 @@
 
 		<loop>
 			<display><pft>'<!-- ',v4901,' -->'/</pft></display>
+
+			<call name="skip_epub"><pft>v1003^m</pft></call>
+			<flow action="skip"><pft>v9990</pft></flow>
+
 			<field action="import" tag="list">4001</field>		
             <field action="import" tag="list">7009/7060</field>
 			<field action="delete" tag="list">9241</field>
+			
 			<!-- verifica se este press release est� relacionada a pelo menos um artigo -->
 			<do task="search">
 				<parm name="db">ARTIGO</parm>
-				<parm name="expression"><pft>|PR_LK=|v1002*3</pft></parm>		
+				<parm name="expression"><pft>|PR|v1002*3</pft></parm>		
 				<parm name="count">1</parm>		
 
 				<loop>			
