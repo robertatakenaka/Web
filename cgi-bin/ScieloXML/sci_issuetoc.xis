@@ -28,19 +28,11 @@
   <!--field action="replace" tag="2003"><pft>ref(['NEWISSUE']val(v4001^s),@PROC_SPLIT_MST.PFT,if v32='ahead' or v32='review' then 'On' fi)</pft></field--> <!-- colocaria em ordem inversa quando ahead of print, deixando desabilitado por enquanto -->
   <flow action="jump"><pft>if a(v7053) then 'LISTA' fi</pft></flow>
 
-  <do task="search">
-	<parm name="db">ARTIGO</parm>
-	<parm name="expression"><pft>'SM='v4001^p'$'</pft></parm>
-	<parm name="count">1</parm>
-	<field action="define" tag="1001">Isis_Total</field>
-	<loop>
-		<field action="export" tag="list">1001</field>
-   
-	</loop>
-  </do>
-<display><pft>'<!--',v1001,'-->'</pft></display>
+  <call name="issueHasArticles"><pft>v4001^p</pft></call>
 
-<flow action="jump"><pft>if val(v1001)<= val(v7053) then 'LISTA' fi</pft></flow>
+<display><pft>'<!--',v9036,'-->'</pft></display>
+
+<flow action="jump"><pft>if val(v9036)<= val(v7053) then 'LISTA' fi</pft></flow>
 
 
 <display><pft>'<PAGES>'</pft></display>
@@ -63,7 +55,10 @@
    <field action="replace" tag="1000">0</field>
    <field action="replace" tag="2000">0</field>
    <loop>
-		<field action="import" tag="list">1000,2000,4001,7053</field>
+		<field action="import" tag="list">1000,2000,4001,7070</field>
+    <call name="skip_epub"><pft>v1003^m</pft></call>
+    <flow action="skip"><pft>v9990</pft></flow>
+
 <display><pft>
 '<!--'/
 'v2000:',v2000/
@@ -99,8 +94,11 @@
   
    <loop>
    <!-- 2000 - Section Code -->
-    <field action="import" tag="list">2000,4001,7009/7060</field> <!--fixed-->
+    <field action="import" tag="list">2000,4001,7009/7070</field> <!--fixed-->
     <field action="import" tag="list">5010</field> <!--fixed-->
+    <call name="skip_epub"><pft>v1003^m</pft></call>
+    <flow action="skip"><pft>v9990</pft></flow>
+
 	<field action="replace" tag="1005"><pft>f(val(v1003^m)+1,1,0)</pft></field>
 	<flow action="skip">
                 <pft>

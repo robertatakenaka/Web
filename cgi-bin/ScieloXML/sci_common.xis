@@ -342,7 +342,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from: HR=',v4900 | to: HR=',v4900*0.17,'00000 | current:',v4901,' --->'/</pft></display>
 			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
 			<call name="skip_epub"><pft>v1003^m</pft></call>
 			<flow action="skip"><pft>v9990</pft></flow>
@@ -368,7 +368,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from: HR=S',v4900*1,'99999 | to: ',HR=S',v4900*1,' | current:',v4901,' --->'/</pft></display>
 			
 			<call name="skip_epub"><pft>v1003^m</pft></call>
 			<flow action="skip"><pft>v9990</pft></flow>
@@ -385,8 +385,8 @@
     <!-- v4900: A1415-790X20150006 -->
     <do task="keyrange">
 		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v9400</pft></parm>
-		<parm name="to"><pft>v9400*0.10</pft></parm>
+		<parm name="from"><pft>v4900</pft></parm>
+		<parm name="to"><pft>v4900*0.10</pft></parm>
 		<parm name="reverse">On</parm>
 
 		<!-- from: A1415-790X20150006 -->
@@ -397,7 +397,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from: ',v4900,' | to: ',v4900*0.10,' | current:',v4901,' --->'/</pft></display>
 			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
 
 			<call name="GetIssueLastArticle"><pft>v4901</pft></call>
@@ -447,7 +447,7 @@
 	<do task="keyrange">
 		<parm name="db">ARTIGO</parm>
 		<parm name="from"><pft>'HR=',v4900,'9'</pft></parm>
-		<parm name="to"><pft>'HR=',v4900*0.21,'999999'</pft></parm>
+		<parm name="to"><pft>'HR=',v4900*0.21,'99999'</pft></parm>
 
 		<!-- from: HR=S1415-790X20150006000459 -->
 		<!-- to:   HR=S1415-790X20150006999999 -->
@@ -458,7 +458,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from: HR=',v4900,'9 | to: HR=',v4900*0.21,'99999 | current:',v4901,' --->'/</pft></display>
 			
 			<call name="skip_epub"><pft>v1003^m</pft></call>
 			<flow action="skip"><pft>v9990</pft></flow>
@@ -483,7 +483,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from: HR=S',v4900*1,'00001 | to: HR=S',v4900*1,'99999 | current:',v4901,' --->'/</pft></display>
 			
 			<call name="skip_epub"><pft>v1003^m</pft></call>
 			<flow action="skip"><pft>v9990</pft></flow>
@@ -500,8 +500,8 @@
     <!-- v4900: A1415-790X20150006 -->
     <do task="keyrange">
 		<parm name="db">ARTIGO</parm>
-		<parm name="from"><pft>v9400</pft></parm>
-		<parm name="to"><pft>v9400*0.10,'99999999'</pft></parm>
+		<parm name="from"><pft>v4900</pft></parm>
+		<parm name="to"><pft>v4900*0.10,'99999999'</pft></parm>
 		
 		<!-- from: A1415-790X20150006 -->
 		<!-- to:   A1415-790X99999999 -->
@@ -511,7 +511,7 @@
 		
 		<loop>
 			<field action="import" tag="4900">4900</field>
-			<display><pft>'<!--  from:',v4900,' | current:',v4901,' --->'/</pft></display>
+			<display><pft>'<!--  from:',v4900,' | to: 'v4900*0.10,'99999999 | current:',v4901,' --->'/</pft></display>
 			<flow action="skip"><pft>if v4900=v4901 then 'Next' fi</pft></flow>
 
 			<call name="GetIssueFirstArticle"><pft>v4901</pft></call>
@@ -3352,13 +3352,12 @@ fi
                         <display><pft>@PROC_SPLIT_MST.PFT</pft></display>
 				<call name="skip_epub"><pft>mfn</pft></call>
 				<flow action="skip"><pft>v9990</pft></flow>
-                        <field action="replace" tag="4902"><pft>v121</pft></field>
-                        <field action="export" tag="4902">4902</field>
+                        <field action="export" tag="list">121</field>
 				<flow action="skip">Quit</flow>
                 </loop>
         </do>
 
-        <field action="replace" tag="9036"><pft>if p(v4902) then v4901, fi,</pft></field>
+        <field action="replace" tag="9036"><pft>if p(v121) then v4901, fi,</pft></field>
 
         <label>EXIST</label>
         <return action="replace" tag="9036">
@@ -3368,6 +3367,23 @@ fi
         </return>
 </function>
 
+<function name="issueArticlesQuantity" action="replace" tag="4901">
+	<field action="replace" tag="9121">0</field>
+    <do task="search">
+        <parm name="db">ARTIGO</parm>
+        <parm name="expression"><pft>'SM='v4901,'$'</pft></parm>
+       
+        <loop>
+            <field action="import" tag="list">9121</field>
+            <display><pft>@PROC_SPLIT_MST.PFT</pft></display>
+            <call name="skip_epub"><pft>mfn</pft></call>
+            <flow action="skip"><pft>v9990</pft></flow>
+            <field action="replace" tag="9121"><pft>f(val(v9121)+1,1,0)</pft></field>
+            <field action="export" tag="list">9121</field>
+        </loop>
+    </do>
+    <return action="replace" tag="9121"><pft>v9121</pft></return>
+</function>
 
 <function name="isXML" action="replace" tag="702">
 	<field action="replace" tag="8000"><pft>replace(mid(v702,size(v702)-3,4),'.XML','.xml')</pft></field> 
@@ -3758,22 +3774,36 @@ fi
 	<field action="export" tag="list">9241</field>
 </function>
 	
-<function name="configuration_var" action="replace" tag="9999">
+<function name="configuration_content" action="replace" tag="9999">
 	<field action="statusfile" tag="1101">../htdocs/scielo.def.php</field>
-
-	<field action="replace" tag="1111"><pft>if v1101^s:'e' then cat('../htdocs/scielo.def.php') fi</pft></field>
-	<field action="replace" tag="1000" split="occ"><pft>if v1111:s(v9999,'=') then mid(v1111,instr(v1111,s(v9999,'='))+size(s(v9999,'=')),size(v1111)) fi</pft></field>
-	<field action="replace" tag="7979"><pft>if p(v1000) then v1000[1] fi</pft></field>
-	<field action="export" tag="list">7979</field>
+	<field action="replace" tag="7799"><pft>if v1101^s:'e' then cat('../htdocs/scielo.def.php') fi</pft></field>
+	<field action="export" tag="list">7799</field>
 </function>
 	
+<function name="configuration_var" action="replace" tag="9999">
+	<field action="import" tag="list">7799</field>
+	<call name="configuration_content"><pft>if a(v7799) then 'readit' fi</pft></call>
 
+	<field action="replace" tag="7700" split="occ"><pft>if v7799:s(v9999,'=') then mid(v7799,instr(v7799,s(v9999,'='))+size(s(v9999,'=')),size(v7799)) fi</pft></field>
+	<field action="replace" tag="7700"><pft>if p(v7700) then v7700[1] fi</pft></field>
+	<field action="export" tag="list">7700</field>
+</function>
+	
 <function name="skip_epub" action="replace" tag="9999">
 	<field action="import" tag="list">7064</field>
-	<call name="configuration_var"><pft>if a(v7064) then 'BLOCK_FUTURE_EPUB' fi</pft></call>
+	<flow action="jump"><pft>if p(v7064) then 'VALUE' fi</pft></flow>
 
-	<display><pft>'<!-- ',v7979,' ',v7064,' -->'</pft></display>
-	<flow action="jump"><pft>if v7064='1' or v7979='1' then else 'END-skip_epub' fi</pft></flow>
+	<field action="import" tag="list">7799</field>
+	<call name="configuration_content"><pft>if a(v7799) then 'readit' fi</pft></call>
+	<call name="configuration_var"><pft>if p(v7799) then 'BLOCK_FUTURE_EPUB' fi</pft></call>
+	<field action="export" tag="list">7799</field>
+	<field action="replace" tag="7064"><pft>v7700</pft></field>
+
+	<label>VALUE</label>
+	<field action="export" tag="list">7064</field>
+
+	<display><pft>'<!-- ',v7064,' -->'</pft></display>
+	<flow action="jump"><pft>if v7064='1' then else 'END-skip_epub' fi</pft></flow>
 
 	<do task="mfnrange">
 		<parm name="db">ARTIGO</parm>

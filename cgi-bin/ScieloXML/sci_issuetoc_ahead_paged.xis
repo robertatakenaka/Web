@@ -36,30 +36,20 @@
 
 	<list action="load" type="list"><pft>(v6000/)</pft></list>
 	<field action="replace" tag="9122">0</field>
-	<do task="list">
-	     <field action="define" tag="1001">Isis_Current</field>
-	     <field action="define" tag="1002">Isis_Items</field>
-	     <field action="define" tag="1">Isis_Item</field>
-	     <loop>
+    <do task="list">
+         <field action="define" tag="1001">Isis_Current</field>
+         <field action="define" tag="1002">Isis_Items</field>
+         <field action="define" tag="1">Isis_Item</field>
+         <loop>
+            <field action="import" tag="list">9122</field>
+            <display><pft>'<!--',v1,'-->'/</pft></display>
 
-			<field action="import" tag="list">9122</field>
-					 <display><pft>'<!--',v1,'-->'/</pft></display>
+            <call name="issueArticlesQuantity"><pft>v1^p</pft></call>
 
-			<field action="replace" tag="122">0</field>
-		 	<do task="search">
-				<parm name="db">ARTIGO</parm>
-				<parm name="expression"><pft>'SM='v1^p'$'</pft></parm>
-				<parm name="count">1</parm>
-				<field action="define" tag="122">Isis_Total</field>
-				<loop>
-					<field action="export" tag="list">122</field>
-			   
-				</loop>
-		    </do>
-			<field action="replace" tag="9122"><pft>f(val(v9122)+val(v122),1,0)</pft></field>
-			<field action="export" tag="list">9122</field>
-<display><pft>'<!--',v122/,v9122,'-->'/</pft></display>
-		</loop>
+            <field action="replace" tag="9122"><pft>f(val(v9122)+val(v9121),1,0)</pft></field>
+            <field action="export" tag="list">9122</field>
+            <display><pft>'<!--',v122/,v9122,'-->'/</pft></display>
+        </loop>
 	</do>
 	<list action="delete">now</list>
 
@@ -80,7 +70,7 @@
 	     <field action="define" tag="1">Isis_Item</field>
 	     <loop>
 		 <display><pft>'<!--',v1,'-->'/</pft></display>
-			<field action="import" tag="list">7053</field>
+			<field action="import" tag="list">7053,7064,</field>
 			<field action="import" tag="list">1000,2000,2001</field>
 			<field action="replace" tag="122">0</field>
 			<do task="keyrange">
@@ -97,13 +87,15 @@
 			   <field action="define" tag="1004">Isis_Postings</field>
 			   
 			   <loop>
-					<field action="import" tag="list">1000,2000,1,7053,2001</field>
+					<field action="import" tag="list">1000,2000,1,7053,7064,,2001</field>
 					<display><pft>
 					'<!--'/
 					'v2000:',v2000/
 					'v1^f:',v1^f/,'v2001:',v2001/
 					'-->'/
 					</pft></display>
+					<call name="skip_epub"><pft>v1003^m</pft></call>
+					<flow action="skip"><pft>v9990</pft></flow>
 
 					<field action="replace" tag="1000"><pft>if val(v1000)< val(v7053) then f(val(v1000)+1,1,0) else '1' fi</pft></field>
 					<field action="replace" tag="2000"><pft>if v1000='1' then f(val(v2000)+1,1,0) fi</pft></field>
@@ -140,7 +132,7 @@
 			<field action="import" tag="list">6000</field>
 			<field action="occ" tag="1" from="6000"><pft>v6001</pft></field>
 
-			<field action="import" tag="list">2001,7009/7060,5010,5333</field>
+			<field action="import" tag="list">2001,7009/7070,5010,5333</field>
 			<flow action="skip"><pft>if val(v5333)>val(v7053) then 'Quit' fi</pft></flow>
 			<do task="keyrange">
 			   <parm name="db">ARTIGO</parm>
@@ -158,8 +150,10 @@
 			   <field action="replace" tag="2000"><pft>'-'</pft></field>
 			  
 			   <loop>
-					<field action="import" tag="list">2000,2001,1,7009/7060,5333</field> <!--fixed-->
-
+					<field action="import" tag="list">2000,2001,1,7009/7070,5333</field> <!--fixed-->
+					<call name="skip_epub"><pft>v1003^m</pft></call>
+					<flow action="skip"><pft>v9990</pft></flow>
+					
 					<flow action="skip"><pft>ref(['ARTIGO']val(v1003^m),@PROC_SPLIT_MST.PFT,if p(v222) then 'Next' fi)</pft></flow>
 
 					<field action="replace" tag="5333"><pft>f(val(v5333)+1,1,0)</pft></field>

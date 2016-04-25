@@ -34,8 +34,12 @@
   
    <loop>
    <!-- 2000 - Section Code -->
-    <field action="import" tag="list">2000,4001,7009/7060</field> <!--fixed-->
+    <field action="import" tag="list">2000,4001,7009/7070</field> <!--fixed-->
     <field action="import" tag="list">5010</field> <!--fixed-->
+
+    <call name="skip_epub"><pft>v1003^m</pft></call>
+    <flow action="skip"><pft>v9990</pft></flow>
+
 	<field action="replace" tag="1005"><pft>f(val(v1003^m)+1,1,0)</pft></field>
 	<flow action="skip">
                 <pft>

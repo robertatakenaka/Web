@@ -135,7 +135,7 @@
             <field action=define tag="1003">Isis_Posting</field>
             
             <loop>
-                <field action="import" tag="list">1001,3000/3004,3012,7009/7060</field>
+                <field action="import" tag="list">1001,3000/3004,3012,7009/7070</field>
                                 
                 <flow action="jump">
                     <pft>
@@ -174,7 +174,9 @@
                         fi
                     </pft>
                 </flow>
-                
+                <call name="skip_epub"><pft>v1003^m</pft></call>
+                <flow action="skip"><pft>v9990</pft></flow>
+    
                 <call name="CreateArticleReferenceXML">
                     <pft>
                         '^t'f(l(['TITLE']'LOC=',mid(v1880,2,9)),1,0),
