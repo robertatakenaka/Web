@@ -20,7 +20,7 @@ $conversor_dir/shs/xref_run_budget_sum.sh $MYTEMP/doi_deposit_saldo_parcial1 $MY
 SALDO_TOTAL=`tail -n 1 $MYTEMP/doi_deposit_saldo_parcial2.seq`
 
 # status atual
-./xref_status_report_db.sh
+$conversor_dir/shs/xref_status_report_db.sh
 
 # required budget
 $cisis_dir/mx btell=0 $XREF_DB_PATH/xref_status_report "PID$ and not ( DEPOSIT_DATE=$ ) " tab=v12 now > $MYTEMP/doi_deposit_required_budget.seq
