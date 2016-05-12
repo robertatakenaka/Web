@@ -2,7 +2,7 @@
 
 . crossref_config.sh
 
-./xref_status_report_db.sh
+$conversor_dir/shs/xref_status_report_db.sh
 
 if [ -f $XREF_DB_PATH/xref_status_report.mst ];
 then
