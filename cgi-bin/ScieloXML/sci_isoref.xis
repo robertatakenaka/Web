@@ -4,9 +4,9 @@
 
 	<function name="formatDate" action="replace" tag="7">
 		<field action="replace" tag="3000"><pft>v7^l</pft></field>
-		
+
 	<field action="replace" tag="4444"><pft>
-					,if v3000='en' then 
+					,if v3000='en' then
                     	select  s(v7*4.2)
                     	case '01': 'January',
                     	case '02': 'February',
@@ -22,7 +22,7 @@
                     	case '12': 'December',
                     	endsel
                     	,' ',v7*6.2,', ',
-                    	
+
                     ,fi
                     ,if v3000='es' then v7*6.2,' de ',
                     	select  s(v7*4.2)
@@ -45,7 +45,7 @@
                     	select  s(v7*4.2)
                     	case '01': 'janeiro',
                     	case '02': 'feveiro',
-                    	case '03': 'março',
+                    	case '03': 'marÔøΩo',
                     	case '04': 'abril',
                     	case '05': 'maio',
                     	case '06': 'junho',
@@ -61,33 +61,33 @@
                     ,v7*0.4,</pft></field>
           <field action="export" tag="list">4444</field>
 	</function>
-	
-	
+
+
 	<function name="StandardXML" action="replace" tag="4001">
-		
+
 		<field action="replace" tag="1" split="occ"><pft>'iso-e'/,'nbr6023-e'/,'apa'/</pft></field>
 		<field action="replace" tag="2" split="occ"><pft>'ISO'/,'ABNT'/,'APA'/</pft></field>
-		<field action="replace" tag="3">Formato Documento ElectrÛnico</field>
-		<field action="replace" tag="4">Formato Documento EletrÙnico</field>
+		<field action="replace" tag="3">Formato Documento ElectrÔøΩnico</field>
+		<field action="replace" tag="4">Formato Documento EletrÔøΩnico</field>
 		<field action="replace" tag="5">Electronic Document Format</field>
 		<display>
 			<pft>
 				'<standard-list>'
 			</pft>
 		</display>
-		
+
 		<field action="replace" tag="441"><pft>ref(['TITLE']val(v4001),(v441| |))</pft></field>
 		<field action="replace" tag="999">
 			<pft>
 					,if instr(v441,'Biological Sciences')>0 or instr(v441,'Health Sciences')>0 then
 						,'vancouv-e',
 					,fi
-				
+
 			</pft>
 		</field>
 		<field action="add" tag="1"><pft>v999</pft></field>
 		<field action="add" tag="2"><pft>if p(v999) then 'Vancouver' fi</pft></field>
-		
+
 
 		<label>STANDARDS</label>
 		<display>
@@ -97,9 +97,9 @@
 					'			<label lang="en">',v5[1],'(',v2,')</label>'/
 					'			<label lang="es">',v3[1],'(',v2,')</label>'/
 					'			<label lang="pt">',v4[1],'(',v2,')</label>'/
-					
+
 					,if v1='apa' then
-					
+
 					,fi
 					'		</standard>'/
 				)
@@ -112,11 +112,11 @@
 		</display>
 	</function>
 
-	<section>
+<section>
 	<field action="cgi" tag="3100">tlng</field>
 	<field action="cgi" tag="3000">lng</field>
 	<field action="cgi" tag="3001">nrm</field>
-	<field action="cgi" tag="3002">pid</field>	
+	<field action="cgi" tag="3002">pid</field>
 	<field action="cgi" tag="3003">sln</field>
 	<field action="cgi" tag="3010">debug</field>
 	<field action="cgi" tag="3011">def</field>
@@ -129,10 +129,10 @@
 
 	<call name="DebugMode"><pft>if a(v3010) then 'OFF' else mpu,v3010,mpl fi</pft></call>
 
-	<include>ScieloXML/sci_cipar.xis</include>	
+	<include>ScieloXML/sci_cipar.xis</include>
 
 	<field action="replace" tag="3002"><pft>mpu,v3002,mpl</pft></field>
-    
+
 	<field action="replace" tag="3004"><pft>f(l(['TITLE'],'LOC=',mid(v3002,2,9)),1,0)</pft></field>
     <field action="replace" tag="3005"><pft>f(l(['NEWISSUE'],'Y',mid(v3002,2,17)),1,0)</pft></field>
 
@@ -140,15 +140,15 @@
     <call name="CreateErrorXML">
 		<pft>
 			if val(v3006)<=0 then
-				'^l'v3000,'^p'v3002'^c0003' 
+				'^l'v3000,'^p'v3002'^c0003'
 			else
 				if val(v3005)<=0 then
 					'^l'v3000,'^p'v3002'^c0002'
-				else 
+				else
 					if val(v3004)<=0 then
 						'^l'v3000,'^p'v3002'^c0001'
-    				fi 
-				fi 
+    				fi
+				fi
 			fi
 		</pft>
 	</call>
@@ -167,22 +167,22 @@
 	<call name="CreateControlInfoXML">
 		<pft>'^l'v3000,'^s'v3001,'^p',v3002,'^i',v3003,'^fsci_isoref'</pft>
 	</call>
-    
+
 	<call name="StandardXML"><pft>v3004</pft></call>
 
     <call name="CreateTitleGroupXML"><pft>v3004</pft></call>
-    
+
     <call name="CreateISSN4IDXML"><pft>v3004</pft></call>
     <call name="CreateISSN4ISSUEXML"><pft>v3004,'^i',f(l(['NEWISSUE'],'Y',mid(v3002,2,17)),1,0)</pft></call>
 
 	<do task="mfnrange">
-		<parm name="db">ARTIGO</parm>	
+		<parm name="db">ARTIGO</parm>
 		<!--parm name="expression"><pft>mpu,'SF=',v3002,mpl</pft></parm-->
 		<parm name="from"><pft>v3006</pft></parm>
 		<parm name="count">1</parm>
-        
+
 		<loop>
-	
+
             <display><pft>@PROC_SPLIT_MST.PFT,</pft></display>
 			<field action="import" tag="list">3000/3012,7009/7060</field> <!-- fixed -->
             <field action="import"	tag="list">3100</field>
@@ -203,7 +203,7 @@
                         ,| ELOCATIONID="|v14^e|"|
                     ,fi
                     ' CURR_DATE="',mid(date,1,8),'"'
-                     ,if val(mid(v223,7,2))>0 then                 
+                     ,if val(mid(v223,7,2))>0 then
                         ,' ahpdate="',v223,'"'
                      ,fi
                     ,| rvpdate="|v224|"|
@@ -212,23 +212,26 @@
                     ,fi
                 </pft>
             </display>
-			<call name="displayDOIAttribute"><pft>v880</pft></call>
-			
+			<call name="displayDOIAttribute"><pft>v880,|^l|v3100</pft></call>
+
 			<call name="formatDate"><pft>s(date)*0.8,'^l',v3000</pft></call>
 			<field action="replace"	tag="1000"><pft>v4444</pft></field>
-			
+
 			<field action="delete"	tag="list">4444</field>
 			<call name="formatDate"><pft>if p(v223) or p(v224)  then if p(v223)  then v223 else if p(v224)  then v224 fi fi,'^l',v3000 fi</pft></call>
 			<field action="replace"	tag="9223"><pft>if p(v223) or p(v224) then v4444 fi</pft></field>
-			
-			
+
+
 			<display><pft>'>',/#</pft></display>
+
+       <call name="CreateDOIXML"><pft>(v337/)</pft></call>
+
 			 <display>
                 <pft>
                     ' <APA><![CDATA[',
                     ,if nocc(v10)=1 then
                     	,v10^s|, |,v10^n|. |,
-                    	
+
                     ,else
                     	(,if iocc<nocc(v10) then
                     	   v10^s|, |,v10^n|, |,
@@ -238,34 +241,34 @@
                     ,fi
                     ,'(',v65*0.4,'). ',
                     ,v9012,'. ',
-                    ,'<i>',replace(v100,'&','&amp;'),'</i>, ', 
+                    ,'<i>',replace(v100,'&','&amp;'),'</i>, ',
                     ,if p(v31) then
-                    ,|<i>|v31|</i>|, 
+                    ,|<i>|v31|</i>|,
                     ,fi
                     ,if p(v32) and v32<>'ahead' and v32<>'review' then
                     	,'(',v32,
                     ,fi
                     ,if p(v131) or p(v132) then if p(v32) then ', ' else '(', fi,if v3000='en' then 'Suppl. ', else 'Supl. ' fi,if s(v131,v132)<>'0' then v131,v132 fi, fi
-                    
-                    ,if p(v131) or p(v132)  then 
+
+                    ,if p(v131) or p(v132)  then
                         ,')',
                     ,else
 	                    ,if p(v32) and v32<>'ahead' and v32<>'review' then
 	                    	,')',
 	                    ,fi
-	                    
+
                     ,fi
-                    
+
                     ,if p(v14) then
                         ,if v14^e<>'' then
                             ,|, |v14^e|. |,
                         ,else
                             ,if v14^f='0' and v14^l='0' then
-                            	
+
                             ,else
                             	,if v14^f<>v14^l then
                             		,|, |v14^f,|-|v14^l,
-                            	,else 
+                            	,else
                             		,', ',v14^f,
                             	,fi
                             	,'. ',
@@ -274,48 +277,48 @@
                      fi,
                     ,|Epub |v9223|.|
                     ,if p(v237) then
-                        ,'<a href="https://dx.doi.org/',v237,'">https://dx.doi.org/',v237,'</a>',
+                        ,'<a href="https://doi.org/',v237,'">https://doi.org/',v237,'</a>',
                     ,else
                         ,if v3000='en' then
                         	,' Retrieved ',
-                        	
+
                         ,fi
                         ,if v3000='es' then
                         	,' Recuperado en ',
-                        	
+
                         ,fi
                         ,if v3000='pt' then
                         	,' Recuperado em ',
                         ,fi
                         ,v1000,', ' ,
-                        ,if v3000='en' then 
+                        ,if v3000='en' then
                             ,' from ',
-                        ,else 
+                        ,else
                         	,' de ',
                         ,fi
                         ,'http://',v7009,'/scielo.php?script=sci_arttext&amp;pid=',v880,'&amp;lng=',v3000,'&amp;tlng=',v3100,'. ',
                     ,fi
                     ']]></APA> '
-                    
+
                 </pft>
             </display>
-			
+
 			<!--call name="CreateArticleTitleOrSectionXML"><pft>mfn</pft></call-->
 			<call name="CreateArticleTitleForReference"><pft>mfn</pft></call>
 
 			<call name="CreateArtIssueInfoXML"><pft>v3005,'^l'v3000'^i'v3003'</pft></call>
-			
+
 			<call name="CreateAuthorsGroupXML"><pft>v3002</pft></call>
-            
+
             <display>
                 <pft>
                     ' </ARTICLE>',/#
                 </pft>
             </display>
-           
+
         </loop>
     </do>
-    
+
     <display>
         <pft>
             '</ARTICLE_INFO>',/#

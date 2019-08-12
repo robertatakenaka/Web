@@ -105,7 +105,7 @@
 
 			<display><pft>if p(v264) then '<EMBARGO date="',v264,'" text="',v8264,'"/>'/ fi</pft></display>
 			
-
+			<call name="CreateDOIXML"><pft>ref(['ARTIGO']val(v1003^m),@PROC_SPLIT_MST.PFT,(v337/))</pft></call> 
 			<display><pft>'<publication-date>',v65,'</publication-date>'</pft></display>
 
             <!--call name="CreateLattesGroupXML">
