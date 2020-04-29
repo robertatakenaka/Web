@@ -126,21 +126,14 @@ def get_more_recent_title_issue_databases():
     # v1.0 scilistatest.sh [8-32]
     """
     Check which title/issue/code bases are more recent:
-        - from serial
+        - from proc serial
         - from XML serial
     if from XML, copy the databases to serial folder
     """
     logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
-    x, x_size = fileinfo(XML_ISSUE_DB+'.mst')
-    h, h_size = fileinfo(ISSUE_DB+'.mst')
-    doit = False
-    if x is not None:
-        if h is not None:
-            if x > h:
-                doit = True
-        else:
-            doit = True
-    if doit:
+    xmlf_date, xmlf_size = fileinfo(XML_ISSUE_DB+'.mst')
+    proc_date, proc_size = fileinfo(ISSUE_DB+'.mst')
+    if not proc_size or proc_date < xmlf_date:
         logger.info(
             'XMLPREPROC: Copia as bases title e issue de %s' %
             CONFIG.get('XML_SERIAL_LOCATION'))
@@ -621,7 +614,6 @@ diffs = '' if len(diffs) == 0 else 'Conteudo de scilista.lst nao XML ({})\n{}\n'
 # v1.0 scilistatest.sh [43-129]
 msg_filename = create_msg_file(SCILISTA_DATETIME, PROC_DATETIME, errors, comments, diffs)
 send_mail(CONFIG.get('MAIL_TO'), CONFIG.get('MAIL_BCC'), CONFIG.get('MAIL_CC'), subject, SCILISTA_DATETIME, msg_filename)
-
 
 # v1.0 coletaxml.sh [21-25]
 logger.info("Proximo passo:")
