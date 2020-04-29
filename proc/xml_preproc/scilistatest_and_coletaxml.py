@@ -2,77 +2,58 @@
 # coding: utf-8
 import os
 import shutil
-
+import ConfigParser
 from datetime import datetime
 
 
-def default_config_vars():
-    return [
-            'COLLECTION',
-            'XML_SERIAL_LOCATION',
-            'MAIL_TO',
-            'MAIL_CC',
-            'MAIL_TO_TEST',
-            'MAIL_BCC',
-            'TEST',
-        ]
+class Config:
 
+    def __init__(self):
+        self.config = None
 
-def get_config_filename():
-    curr = os.getcwd()
-    folders = curr.split('/')
-    return 'xmlpreproc_config_'+folders[2]+'.ini'
+    def load(self):
+        try:
+            self.config = ConfigParser.ConfigParser()
+            self.config.readfp(open(self.file_path))
+        except OSError as e:
+            print(("Falta arquivo de configuração: {}. "
+                   "Consulte o modelo: {}").format(
+                    self.file_path, 'xmlpreproc_config.ini.template'
+                ))
+            raise e
+        except ConfigParser.MissingSectionHeaderError as e:
+            raise e
 
-
-def read_config(config_filename, default):
-    config = None
-    if os.path.isfile(config_filename):
-        config = {}
-        items = open(config_filename, 'r').readlines()
-        for item in items:
-            item = item.strip()
-            if '=' in item:
-                k, v = item.split('=')
-                if k in default:
-                    k = k.strip()
-                    v = v.strip()
-                config[k] = v
-        d = config.get('TEST', 'true')
-        config['TEST'] = d.lower() != 'false'
-        if set(default).issubset(set(config.keys())):
-            return config, None
-        else:
-            return None, 'Invalid format \n{}'.format(open(config_filename).read())
-    else:
-        return None, 'Not found {}'.format(config_filename)
-
-
-def check_config(config, msg, name):
-    errors = None
-    if config is None:
-        print('####')
-        print('')
-        print('    ERROR')
-        print('')
-        print('####')
-        content = open('xmlpreproc_config.ini.template').read()
-        errors = '========\n  ERROR: {}\n    Criar o arquivo {} que contenha a seguinte configuracao\n========\n{}'.format(msg, name, content)
-    else:
+    @property
+    def collection_dirname(self):
         curr = os.getcwd()
         folders = curr.split('/')
-        motivos = []
-        if '/'+folders[2]+'/serial' not in config.get('XML_SERIAL_LOCATION'):
-            motivos.append('Esperado a pasta {} em {}'.format(
-                folders[2]+'/serial', config.get('XML_SERIAL_LOCATION')))
-        if not os.path.isdir(config.get('XML_SERIAL_LOCATION')+'/issue'):
-            motivos.append('Esperado a pasta issue em {}'.format(
-                config.get('XML_SERIAL_LOCATION')))
-        if len(motivos) > 0:
-            errors = 'Valor invalido de XML_SERIAL_LOCATION {} para {}. {}.'.format(
-                config.get('XML_SERIAL_LOCATION'),
-                config.get('COLLECTION'),
-                ' e '.join(motivos))
-    return errors
+        # ['', 'bases', 'col.xxx']
+        return folders[2]
+
+    @property
+    def file_path(self):
+        return 'xmlpreproc_config_{}.ini'.format(self.collection_dirname)
+
+    def get(self, name):
+        return self.config.get("[SECTION]", name)
+
+    def check(self):
+        serial_path = "/{}/serial".format(self.collection_dirname)
+        issue_path = os.path.join(self.get('XML_SERIAL_LOCATION'), 'issue')
+
+        errors = []
+        if serial_path not in self.get('XML_SERIAL_LOCATION'):
+            errors.append(
+                'Esperada a pasta "{}" em "{}"'.format(
+                    serial_path, self.get('XML_SERIAL_LOCATION')))
+
+        if not os.path.isdir(issue_path):
+            errors.append(
+                'Esperada a pasta "issue" em "{}"'.format(
+                    self.get('XML_SERIAL_LOCATION')))
+        if errors:
+            raise(ValueError("\n".join(errors)))
 
 
 LOG_FILE = 'xmlpreproc_outs.log'
@@ -81,12 +62,13 @@ MSG_ERROR_FILE = 'xmlpreproc_outs_msg-erro.txt'
 MSG_OK_FILE = 'xmlpreproc_outs_msg-ok.txt'
 PROC_DATETIME = datetime.now().isoformat().replace('T', ' ')[:-7]
 
-default = default_config_vars()
-config_filename = get_config_filename()
-CONFIG, msg = read_config(config_filename, default)
-errors = check_config(CONFIG, msg, config_filename)
-if errors is not None:
-    exit(errors)
+
+CONFIG = Config()
+try:
+    CONFIG.load()
+    CONFIG.check()
+except (OSError, ValueError, ConfigParser.MissingSectionHeaderError) as e:
+    exit(e)
 
 
 PROC_SERIAL_LOCATION = '../serial'
