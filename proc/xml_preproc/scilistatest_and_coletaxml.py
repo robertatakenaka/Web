@@ -4,6 +4,7 @@ import os
 import shutil
 import ConfigParser
 from datetime import datetime
+import logging
 
 
 class Config:
@@ -58,6 +59,7 @@ class Config:
 
 LOG_FILE = 'xmlpreproc_outs.log'
 ERROR_FILE = 'xmlpreproc_outs_scilista-erros.txt'
+
 MSG_ERROR_FILE = 'xmlpreproc_outs_msg-erro.txt'
 MSG_OK_FILE = 'xmlpreproc_outs_msg-ok.txt'
 PROC_DATETIME = datetime.now().isoformat().replace('T', ' ')[:-7]
@@ -70,6 +72,28 @@ try:
 except (OSError, ValueError, ConfigParser.MissingSectionHeaderError) as e:
     exit(e)
 
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+# create file handler which logs even debug messages
+fh = logging.FileHandler(LOG_FILE)
+fh.setLevel(logging.DEBUG)
+# create file handler which logs even debug messages
+fh_errors = logging.FileHandler(ERROR_FILE)
+fh_errors.setLevel(logging.ERROR)
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+# create formatter and add it to the handlers
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+fh.setFormatter(formatter)
+fh_errors.setFormatter(formatter)
+# add the handlers to logger
+logger.addHandler(ch)
+logger.addHandler(fh)
+logger.addHandler(fh_errors)
 
 PROC_SERIAL_LOCATION = '../serial'
 REGISTERED_ISSUES_FILENAME = '{}/registered_issues.txt'.format(PROC_SERIAL_LOCATION)
@@ -84,9 +108,8 @@ def os_system(cmd, display=True):
     Execute a command
     """
     msg = '_'*30 + '\n#  Executando: \n#    >>> {}'.format(cmd)
-    inform_step(msg, display=display)
+    logger.info(msg)
     os.system(cmd)
-    inform_step('_'*30, display=display)
 
 
 def fileinfo(filename):
@@ -106,7 +129,7 @@ def get_more_recent_title_issue_databases():
         - from XML serial
     if from XML, copy the databases to serial folder
     """
-    inform_step('XMLPREPROC: Seleciona as bases title e issue mais atualizada', '')
+    logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
     x, x_size = fileinfo(XML_ISSUE_DB+'.mst')
     h, h_size = fileinfo(ISSUE_DB+'.mst')
     doit = False
@@ -117,7 +140,9 @@ def get_more_recent_title_issue_databases():
         else:
             doit = True
     if doit:
-        inform_step('XMLPREPROC: Copia as bases title e issue de {}'.format(CONFIG.get('XML_SERIAL_LOCATION')), '')
+        logger.info(
+            'XMLPREPROC: Copia as bases title e issue de %s' %
+            CONFIG.get('XML_SERIAL_LOCATION'))
         for folder in ['title', 'issue']:
             os_system(
                 'cp -r {}/{} {}'.format(
@@ -127,37 +152,26 @@ def get_more_recent_title_issue_databases():
                     )
                 )
     else:
-        inform_step('XMLPREPROC: Use as bases title e issue de {}'.format(PROC_SERIAL_LOCATION), '')
+        logger.info(
+            'XMLPREPROC: Use as bases title e issue de %s' %
+            PROC_SERIAL_LOCATION)
 
 
-def file_delete(filename):
-    if os.path.exists(filename):
-        try:
-            os.unlink(filename)
-        except:
-            print('Unable to delete {}'.format(filename))
+def file_delete(filename, raise_exc=False):
+    try:
+        os.unlink(filename)
+    except OSError as e:
+        if raise_exc:
+            raise e
+        print(e)
 
 
 def file_create(filename):
     path = os.path.dirname(filename)
-    if path != '' and not os.path.isdir(path):
+    if path and not os.path.isdir(path):
         os.makedirs(path)
-    open(filename, 'w').write('')
-
-
-def inform_error(filename, msg):
-    texto = 'Error: {}\n'.format(msg)
-    print(texto)
-    open(filename, 'a').write(texto)
-
-
-def inform_step(step, msg='', display=True):
-    text = '{}: {}\n'.format(step, msg)
-    if msg == '':
-        text = step + '\n'
-    if display is True:
-        print(text)
-    open(LOG_FILE, 'a').write(text)
+    with open(filename, "w") as fp:
+        fp.write("")
 
 
 def validate_scilista_item_format(parts):
@@ -238,7 +252,7 @@ def check_ahead(proc_db_filename, xml_db_filename):
 
     t = len(proc_aop)
     if t > len(list(set(proc_aop))):
-        inform_error(ERROR_FILE, 'Found duplication in {}'.format(proc_db_filename))
+        logger.error('Found duplication in %s ' % proc_db_filename)
 
     for item in xml_aop:
         if item in proc_aop:
@@ -246,16 +260,16 @@ def check_ahead(proc_db_filename, xml_db_filename):
             break
     if done is False:
         # fazer append
-        inform_step(
-            'COLETA XML',
-            '{}\nExecutara o append'.format(msg))
+        logger.info('COLETA XML: %s Executara o append' % msg)
         return 'mx {} from=2 append={} -all now'.format(
                     xml_db_filename,
                     proc_db_filename
                 )
-    inform_step(
-            'COLETA XML',
-            '{}\nDesnecessario executar append pois tem mesmo conteudo'.format(msg))
+    logger.info((
+        'COLETA XML: %s '
+        'Desnecessario executar append pois tem mesmo conteudo' %
+        msg
+    ))
 
 
 def check_data_for_coleta(acron, issueid):
@@ -311,7 +325,7 @@ def coletaxml(xml_item, proc_item):
     if not os.path.exists(proc_xrf_filename):
         errors.append('Nao foi possivel criar {}'.format(proc_xrf_filename))
     if len(errors) > 0:
-        inform_error(ERROR_FILE, '\n'.join(errors))
+        logger.error('\n'.join(errors))
         return False
     return True
 
@@ -350,8 +364,8 @@ def merge_scilistas(scilistaxml_items, scilista_items):
 def save_new_scilista(items):
     content = '\n'.join(items)+'\n'
     open(SCILISTA, 'w').write(content)
-    inform_step('JOIN SCILISTAS', SCILISTA + '+' + SCILISTA_XML)
-    inform_step('===\n'+content+'===')
+    logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
+    logger.info(content)
 
 
 def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, msg_filename):
@@ -443,14 +457,14 @@ def create_msg_file(scilista_date, proc_date, errors=None, comments=None, diffs=
     msg = get_email_message(scilista_date, proc_date, instructions, scilista_content, diffs, fim, comments)
 
     open(msg_file, 'w').write(msg)
-    inform_step(msg)
+    logger.info(msg)
     return msg_file
 
 
 def check_scilista(scilistaxml_items, registered_issues):
     # v1.0 scilistatest.sh [36] (scilistatest.py)
     # v1.0 scilistatest.sh [41] (checkissue.py)
-    inform_step('SCILISTA TESTE', '{} itens'.format(len(scilista_items)))
+    logger.info('SCILISTA TESTE %i itens' % len(scilista_items))
     coleta_items = []
     scilista_ok = True
     n = 0
@@ -458,7 +472,7 @@ def check_scilista(scilistaxml_items, registered_issues):
         n += 1
         parts = item.split()
         if validate_scilista_item_format(parts) is not True:
-            inform_error(ERROR_FILE, 'Linha {}: "{}" tem formato invalido'.format(n, item))
+            logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
             scilista_ok = False
         else:
             acron, issueid = parts[0], parts[1]
@@ -466,7 +480,7 @@ def check_scilista(scilistaxml_items, registered_issues):
 
             # v1.0 scilistatest.sh [41] (checkissue.py)
             if issue not in registered_issues:
-                inform_error(ERROR_FILE, 'Linha {}: "{}" nao esta registrado'.format(n, issue))
+                logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
                 scilista_ok = False
             else:
                 items_to_copy, mx_append_db_commands, error_msg, expected_db_files_in_serial = check_data_for_coleta(acron, issueid)    
@@ -474,7 +488,7 @@ def check_scilista(scilistaxml_items, registered_issues):
                     coleta_items.append((items_to_copy, mx_append_db_commands, expected_db_files_in_serial))
                 else:
                     scilista_ok = False
-                    inform_error(ERROR_FILE, 'Linha {}: {}'.format(n, error_msg))
+                    logger.error('Linha %i: %s' % (n, error_msg))
     if scilista_ok is True:
         return coleta_items
 
@@ -483,7 +497,7 @@ def coletar_items(coleta_items):
     # v1.0 coletaxml.sh [16] (getbasesxml4proc.py)
     expected = []
     coleta_items = coleta_items or []
-    inform_step('COLETA XML', 'Coletar {} itens'.format(len(coleta_items)))
+    logger.info('COLETA XML: Coletar %i itens' % len(coleta_items))
     for items_to_copy, mx_append_db_command, expected_db_files_in_serial in coleta_items:
         expected.extend(expected_db_files_in_serial)
         done = True
@@ -491,18 +505,18 @@ def coletar_items(coleta_items):
             xml_item, proc_item = items_to_copy
             done = coletaxml(xml_item, proc_item)
         if done and mx_append_db_command is not None:
-            inform_step('COLETA XML', mx_append_db_command)
+            logger.info('COLETA XML: %s' % mx_append_db_command)
             os_system(mx_append_db_command)
     return expected
 
 
 def check_coletados(expected):
     coletaxml_ok = True
-    inform_step('COLETA XML', 'Verificar se coleta foi bem sucedida')
+    logger.info('COLETA XML: Verificar se coleta foi bem sucedida')
     for file in expected:
         if not os.path.exists(file):
             coletaxml_ok = False
-            inform_error(ERROR_FILE, 'Coleta incompleta. Falta {}'.format(file))
+            logger.error('Coleta incompleta. Falta %s' % file)
     return coletaxml_ok
 
 
@@ -513,7 +527,7 @@ def get_new_scilista(scilistaxml_items, scilista_items):
     for item in scilistaxml_items:
         if item not in scilista_items:
             error = True
-            inform_error(ERROR_FILE, 'Nova scilista. Falta {}'.format(item))
+            logger.error('Nova scilista. Falta %s' % item)
     if error is False:
         save_new_scilista(scilista_items)
         return scilista_items
@@ -524,9 +538,10 @@ def list_diff(lista_maior, lista_menor):
     return [item for item in lista_maior if item not in lista_menor]
 
 
-inform_step('XMLPREPROC: INICIO', '{} {}'.format(CONFIG.get('COLLECTION'), PROC_DATETIME))
+logger.info('XMLPREPROC: INICIO')
+logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
+logger.info('dir local: %s' % os.getcwd())
 
-inform_step('dir local: {}'.format(os.getcwd()))
 file_create(ERROR_FILE)
 file_create(LOG_FILE)
 if not os.path.isfile(SCILISTA):
@@ -553,7 +568,9 @@ if os.path.exists(SCILISTA_XML):
     scilistaxml_items = read_file_lines(SCILISTA_XML)
     q_scilistaxml_items = len(scilistaxml_items)
 
-    inform_step('XMLPREPROC: SCILISTA', '{}'.format(SCILISTA_DATETIME))
+    logger.info('XMLPREPROC: SCILISTA')
+    logger.info(SCILISTA_DATETIME)
+
     get_more_recent_title_issue_databases()
 
     if os.path.isfile(ISSUE_DB+'.mst') or CONFIG.get('TEST') is True:
@@ -565,9 +582,9 @@ if os.path.exists(SCILISTA_XML):
         if check_coletados(expected):
             scilista_items = get_new_scilista(scilistaxml_items, scilista_items)
     else:
-        inform_error(ERROR_FILE, 'Not found {}'.format(ISSUE_DB+'.mst'))
+        logger.error('Not found: %s.mst' % ISSUE_DB)
 else:
-    inform_error(ERROR_FILE, 'Not found {}'.format(SCILISTA_XML))
+    logger.error('Not found: %s ' % SCILISTA_XML)
 
 
 errors = open(ERROR_FILE, 'r').read().strip()
@@ -594,8 +611,6 @@ send_mail(CONFIG.get('MAIL_TO'), CONFIG.get('MAIL_BCC'), CONFIG.get('MAIL_CC'), 
 
 
 # v1.0 coletaxml.sh [21-25]
-inform_step("\n"*3)
-inform_step("="*30)
-inform_step("Proximo passo:")
-inform_step(next_action)
+logger.info("Proximo passo:")
+logger.info(next_action)
 exit(next_action)
