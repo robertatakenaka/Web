@@ -15,7 +15,8 @@ class Config:
     def load(self):
         try:
             self.config = ConfigParser.ConfigParser()
-            self.config.readfp(open(self.file_path))
+            with open(self.file_path) as fp:
+                self.config.readfp(fp)
         except OSError as e:
             print(("Falta arquivo de configuração: {}. "
                    "Consulte o modelo: {}").format(
@@ -118,7 +119,7 @@ def fileinfo(filename):
     """
     if os.path.isfile(filename):
         return os.path.getmtime(filename), os.path.getsize(filename)
-    return None, None
+    return 0, 0
 
 
 def get_more_recent_title_issue_databases():
@@ -166,12 +167,32 @@ def file_delete(filename, raise_exc=False):
         print(e)
 
 
-def file_create(filename):
+def file_write(filename, content=''):
     path = os.path.dirname(filename)
     if path and not os.path.isdir(path):
         os.makedirs(path)
     with open(filename, "w") as fp:
-        fp.write("")
+        fp.write(content)
+
+
+def file_read(filename):
+    try:
+        with open(filename, "r") as fp:
+            c = fp.read()
+    except OSError:
+        return None
+    else:
+        return c
+
+
+def file_readlines(filename):
+    try:
+        with open(filename, "r") as fp:
+            c = [i.strip() for i in fp.readlines()]
+    except OSError:
+        return []
+    else:
+        return c
 
 
 def validate_scilista_item_format(parts):
@@ -195,9 +216,8 @@ def mx_pft(base, PFT, display=False):
             PFT,
             result)
     os_system(cmd, display)
-    if os.path.isfile(result):
-        r = [item.strip() for item in open(result, 'r').readlines()]
-        os.unlink(result)
+    r = file_readlines(result)
+    file_delete(result)
     return r or []
 
 
@@ -206,13 +226,13 @@ def get_registered_issues():
     Check the issue database
     Return a list of registered issues
     """
-    registered_issues = read_file_lines(REGISTERED_ISSUES_FILENAME)
+    registered_issues = file_readlines(REGISTERED_ISSUES_FILENAME)
     if os.path.isfile(ISSUE_DB+'.mst'):
         PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
         registered_issues = mx_pft(
                             ISSUE_DB,
                             PFT)
-        open(REGISTERED_ISSUES_FILENAME, 'w').write('\n'.join(registered_issues))
+        file_write(REGISTERED_ISSUES_FILENAME, '\n'.join(registered_issues))
     elif CONFIG.get('TEST') is False:
         registered_issues = []
     items = []
@@ -330,13 +350,6 @@ def coletaxml(xml_item, proc_item):
     return True
 
 
-def read_file_lines(filename):
-    items = []
-    if os.path.isfile(filename):
-        items = [item.strip() for item in open(filename, 'r').readlines()]
-    return items
-
-
 def sort_scilista(scilista_items):
     items = list(set([item.strip() for item in scilista_items]))
     dellist = []
@@ -363,7 +376,7 @@ def merge_scilistas(scilistaxml_items, scilista_items):
 
 def save_new_scilista(items):
     content = '\n'.join(items)+'\n'
-    open(SCILISTA, 'w').write(content)
+    file_write(SCILISTA, content)
     logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
     logger.info(content)
 
@@ -452,11 +465,11 @@ Conteudo da scilistaxml.lst
 def create_msg_file(scilista_date, proc_date, errors=None, comments=None, diffs=None):
     errors = errors or ''
     msg_file = MSG_ERROR_FILE if len(errors) > 0 else MSG_OK_FILE
-    scilista_content = open(SCILISTA_XML).read() if os.path.isfile(SCILISTA_XML) else 'Not found {}'.format(SCILISTA_XML)
+    scilista_content = file_read(SCILISTA_XML) or 'Not found {}'.format(SCILISTA_XML)
     instructions, fim = create_msg_instructions(errors)
     msg = get_email_message(scilista_date, proc_date, instructions, scilista_content, diffs, fim, comments)
 
-    open(msg_file, 'w').write(msg)
+    file_write(msg_file, msg)
     logger.info(msg)
     return msg_file
 
@@ -542,10 +555,10 @@ logger.info('XMLPREPROC: INICIO')
 logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
 logger.info('dir local: %s' % os.getcwd())
 
-file_create(ERROR_FILE)
-file_create(LOG_FILE)
+file_write(ERROR_FILE)
+file_write(LOG_FILE)
 if not os.path.isfile(SCILISTA):
-    file_create(SCILISTA)
+    file_write(SCILISTA)
 for f in [MSG_OK_FILE, MSG_ERROR_FILE]:
     file_delete(f)
 
@@ -557,7 +570,7 @@ SCILISTA_DATETIME = None
 scilistaxml_items = []
 q_scilistaxml_items = 0
 if os.path.exists(SCILISTA_XML):
-    scilista_items = read_file_lines(SCILISTA)
+    scilista_items = file_readlines(SCILISTA)
 
     SCILISTA_DATETIME = datetime.fromtimestamp(
                 os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
@@ -565,7 +578,7 @@ if os.path.exists(SCILISTA_XML):
     # v1.0 scilistatest.sh [6]
     os_system('dos2unix {}'.format(SCILISTA_XML))
 
-    scilistaxml_items = read_file_lines(SCILISTA_XML)
+    scilistaxml_items = file_readlines(SCILISTA_XML)
     q_scilistaxml_items = len(scilistaxml_items)
 
     logger.info('XMLPREPROC: SCILISTA')
@@ -587,7 +600,7 @@ else:
     logger.error('Not found: %s ' % SCILISTA_XML)
 
 
-errors = open(ERROR_FILE, 'r').read().strip()
+errors = file_read(ERROR_FILE)
 subject = 'OK'
 next_action = 'Executar processar.sh'
 if len(errors) > 0:
