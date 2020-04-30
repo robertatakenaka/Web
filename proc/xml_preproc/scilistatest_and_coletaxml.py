@@ -553,6 +553,30 @@ def check_scilista_xml(registered_issues):
         return sorted_items
 
 
+def check_scilista_xml_and_coleta_xml():
+    # Garante que title e issue na pasta de processamento estao atualizadas
+    get_more_recent_title_issue_databases()
+
+    # obtem lista de issues registrados
+    registered_issues = get_registered_issues()
+    if not registered_issues:
+        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+        return
+
+    # verificar o conteúdo da scilista xml contra os issues registrados
+    scilistaxml_items = check_scilista_xml(registered_issues)
+    if scilistaxml_items:
+        # estando completamente valida coleta os dados dos issues
+        expected = coletar_items(scilistaxml_items)
+        # verifica se as bases dos artigos estao presentes na area de proc
+        check_coletados(expected)
+
+        scilista_items = file_readlines(SCILISTA)
+        # atualiza a scilista na area de processamento
+        scilista_items = join_scilistas_and_update_scilista_file(
+                scilistaxml_items, scilista_items)
+
+
 logger.info('XMLPREPROC: INICIO')
 logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
 logger.info('dir local: %s' % os.getcwd())
@@ -591,7 +615,7 @@ if os.path.exists(SCILISTA_XML):
     registered_issues = get_registered_issues()
     if registered_issues:
         # v1.0 scilistatest.sh
-        valid_scilista_items = check_scilista(
+        valid_scilista_items = check_scilista_items_are_registered(
             scilistaxml_items, registered_issues)
         # v1.0 coletaxml.sh
         if len(valid_scilista_items) == len(scilista_items):
