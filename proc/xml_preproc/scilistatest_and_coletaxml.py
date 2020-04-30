@@ -362,19 +362,6 @@ def sort_scilista(scilista_items):
     return sorted(dellist) + sorted(prlist) + sorted(naheadlist) + sorted(issuelist)
 
 
-def merge_scilistas(scilistaxml_items, scilista_items):
-    items = []
-    items = list(set(scilistaxml_items+scilista_items))
-    return sort_scilista(items)
-
-
-def save_new_scilista(items):
-    content = '\n'.join(items)+'\n'
-    file_write(SCILISTA, content)
-    logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
-    logger.info(content)
-
-
 def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, msg_filename):
     if CONFIG.get('TEST') is True:
         mailto = CONFIG.get('MAIL_TO_TEST')
@@ -524,24 +511,56 @@ def check_coletados(expected):
     return coletaxml_ok
 
 
-def join_scilistas(scilistaxml_items, scilista_items):
+def join_scilistas_and_update_scilista_file(scilistaxml_items, scilista_items):
     # v1.0 coletaxml.sh [20] (joinlist.py)
-    error = False
-    scilista_items = merge_scilistas(scilistaxml_items, scilista_items)
-    for item in scilistaxml_items:
-        if item not in scilista_items:
-            error = True
-            logger.error('Nova scilista. Falta %s' % item)
-    if error is False:
-        save_new_scilista(scilista_items)
-        return scilista_items
-    return False
+    new_scilista_items = sort_scilista(scilistaxml_items + scilista_items)
+    content = '\n'.join(new_scilista_items)+'\n'
+    file_write(SCILISTA, content)
+    logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
+    logger.info(content)
 
 
 def list_diff(lista_maior, lista_menor):
     return [item for item in lista_maior if item not in lista_menor]
 
 
+def check_scilista_xml():
+    if os.path.exists(SCILISTA_XML):
+
+        scilista_items = file_readlines(SCILISTA)
+
+        SCILISTA_DATETIME = datetime.fromtimestamp(
+                    os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
+
+        # v1.0 scilistatest.sh [6]
+        os_system('dos2unix {}'.format(SCILISTA_XML))
+
+        scilistaxml_items = file_readlines(SCILISTA_XML)
+        q_scilistaxml_items = len(scilistaxml_items)
+
+        logger.info('XMLPREPROC: SCILISTA')
+        logger.info(SCILISTA_DATETIME)
+
+        get_more_recent_title_issue_databases()
+
+        registered_issues = get_registered_issues()
+        if registered_issues:
+            # v1.0 scilistatest.sh
+            valid_scilista_items = check_scilista(
+                scilistaxml_items, registered_issues)
+            # v1.0 coletaxml.sh
+            if len(valid_scilista_items) == len(scilista_items):
+                expected = coletar_items(valid_scilista_items)
+                if check_coletados(expected):
+                    scilista_items = join_scilistas_and_update_scilista_file(
+                        scilistaxml_items, scilista_items)
+        else:
+            logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+
+    else:
+        logger.error('Not found: %s ' % SCILISTA_XML)
+
+        
 logger.info('XMLPREPROC: INICIO')
 logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
 logger.info('dir local: %s' % os.getcwd())
@@ -586,7 +605,7 @@ if os.path.exists(SCILISTA_XML):
         if len(valid_scilista_items) == len(scilista_items):
             expected = coletar_items(valid_scilista_items)
             if check_coletados(expected):
-                scilista_items = join_scilistas(
+                scilista_items = join_scilistas_and_update_scilista_file(
                     scilistaxml_items, scilista_items)
     else:
         logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
