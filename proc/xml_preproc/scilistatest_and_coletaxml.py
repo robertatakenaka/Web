@@ -455,13 +455,12 @@ def create_msg_file(scilista_date, proc_date, errors=None, comments=None, diffs=
     return msg_file
 
 
-def check_scilista(scilistaxml_items, registered_issues):
-    # v1.0 scilistatest.sh [36] (scilistatest.py)
+def check_scilista_items_are_registered(scilista_items, registered_issues):
     # v1.0 scilistatest.sh [41] (checkissue.py)
     logger.info('SCILISTA TESTE %i itens' % len(scilista_items))
     valid_issues_data = []
     n = 0
-    for item in scilistaxml_items:
+    for item in scilista_items:
         n += 1
         parts = validate_scilista_item_format(item)
         if parts:
@@ -524,37 +523,34 @@ def list_diff(lista_maior, lista_menor):
     return [item for item in lista_maior if item not in lista_menor]
 
 
-def check_scilista_xml():
-    scilistaxml_items = file_readlines(SCILISTA_XML)
-    if not scilistaxml_items:
-        return logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
-
-    scilista_items = file_readlines(SCILISTA)
-
-    SCILISTA_DATETIME = datetime.fromtimestamp(
-                os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
-
+def check_scilista_xml(registered_issues):
     # v1.0 scilistatest.sh [6]
+    SCILISTA_DATETIME = datetime.fromtimestamp(
+        os.path.getmtime(SCILISTA_XML)
+        ).isoformat().replace('T', ' ')
+    logger.info('XMLPREPROC: SCILISTA XML: %s ' % SCILISTA_DATETIME)
+
     os_system('dos2unix {}'.format(SCILISTA_XML))
 
-    logger.info('XMLPREPROC: SCILISTA')
-    logger.info(SCILISTA_DATETIME)
+    scilistaxml_items = file_readlines(SCILISTA_XML)
+    if not scilistaxml_items:
+        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
+        return
 
-    get_more_recent_title_issue_databases()
+    sorted_items = sort_scilista(scilistaxml_items)
+    if len(sorted_items) != len(scilistaxml_items):
+        logger.error((
+            '%s contem itens repetidos.'
+            ' Verificar e enviar novamente.' % SCILISTA_XML))
+        return
 
-    registered_issues = get_registered_issues()
-    if registered_issues:
-        # v1.0 scilistatest.sh
-        valid_scilista_items = check_scilista(
-            scilistaxml_items, registered_issues)
-        # v1.0 coletaxml.sh
-        if len(valid_scilista_items) == len(scilista_items):
-            expected = coletar_items(valid_scilista_items)
-            if check_coletados(expected):
-                scilista_items = join_scilistas_and_update_scilista_file(
-                    scilistaxml_items, scilista_items)
-    else:
-        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+    # v1.0 scilistatest.sh
+    # v1.0 scilistatest.sh [36] (scilistatest.py)
+    valid_scilista_items = check_scilista_items_are_registered(
+        scilistaxml_items, registered_issues)
+    # v1.0 coletaxml.sh
+    if len(valid_scilista_items) == len(scilistaxml_items):
+        return sorted_items
 
 
 logger.info('XMLPREPROC: INICIO')
