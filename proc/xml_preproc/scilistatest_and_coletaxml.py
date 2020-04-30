@@ -58,9 +58,9 @@ class Config:
             raise(ValueError("\n".join(errors)))
 
 
+REGISTERED_ISSUES_PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
 LOG_FILE = 'xmlpreproc_outs.log'
 ERROR_FILE = 'xmlpreproc_outs_scilista-erros.txt'
-
 MSG_ERROR_FILE = 'xmlpreproc_outs_msg-erro.txt'
 MSG_OK_FILE = 'xmlpreproc_outs_msg-ok.txt'
 PROC_DATETIME = datetime.now().isoformat().replace('T', ' ')[:-7]
@@ -100,8 +100,8 @@ PROC_SERIAL_LOCATION = '../serial'
 REGISTERED_ISSUES_FILENAME = '{}/registered_issues.txt'.format(PROC_SERIAL_LOCATION)
 SCILISTA_XML = '{}/scilistaxml.lst'.format(PROC_SERIAL_LOCATION)
 SCILISTA = '{}/scilista.lst'.format(PROC_SERIAL_LOCATION)
-ISSUE_DB = '{}/issue/issue'.format(PROC_SERIAL_LOCATION)
-XML_ISSUE_DB = '{}/issue/issue'.format(CONFIG.get('XML_SERIAL_LOCATION'))
+PROCISSUEDB = '{}/issue/issue'.format(PROC_SERIAL_LOCATION)
+XMLISSUEDB = '{}/issue/issue'.format(CONFIG.get('XML_SERIAL_LOCATION'))
 
 
 def os_system(cmd, display=True):
@@ -131,8 +131,8 @@ def get_more_recent_title_issue_databases():
     if from XML, copy the databases to serial folder
     """
     logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
-    xmlf_date, xmlf_size = fileinfo(XML_ISSUE_DB+'.mst')
-    proc_date, proc_size = fileinfo(ISSUE_DB+'.mst')
+    xmlf_date, xmlf_size = fileinfo(XMLISSUEDB+'.mst')
+    proc_date, proc_size = fileinfo(PROCISSUEDB+'.mst')
     if not proc_size or proc_date < xmlf_date:
         logger.info(
             'XMLPREPROC: Copia as bases title e issue de %s' %
@@ -195,7 +195,7 @@ def validate_scilista_item_format(parts):
         return True
 
 
-# mx_pft(ISSUE_DB, PFT, REGISTERED_ISSUES_FILENAME)
+# mx_pft(PROCISSUEDB, PFT, REGISTERED_ISSUES_FILENAME)
 def mx_pft(base, PFT, display=False):
     """
     Check the issue database
@@ -203,7 +203,7 @@ def mx_pft(base, PFT, display=False):
     """
     result = './mx_pft.tmp'
     if os.path.isfile(result):
-        os.unlink(result)
+        file_delete(result)
     cmd = 'mx {} "pft={}" now | sort -u > {}'.format(
             base,
             PFT,
@@ -217,23 +217,18 @@ def mx_pft(base, PFT, display=False):
 def get_registered_issues():
     """
     Check the issue database
-    Return a list of registered issues
+    Return the list of registered issues of issue 
     """
-    registered_issues = file_readlines(REGISTERED_ISSUES_FILENAME)
-    if os.path.isfile(ISSUE_DB+'.mst'):
-        PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
-        registered_issues = mx_pft(
-                            ISSUE_DB,
-                            PFT)
-        file_write(REGISTERED_ISSUES_FILENAME, '\n'.join(registered_issues))
-    elif CONFIG.get('TEST') is False:
-        registered_issues = []
     items = []
-    for item in registered_issues:
+    if os.path.isfile(PROCISSUEDB+'.mst'):
+        items = mx_pft(PROCISSUEDB, REGISTERED_ISSUES_PFT)
+
+    registered_issues = []
+    for item in items:
         parts = item.strip().split()
         if len(parts) == 2:
-            items.append(parts[0].lower() + ' ' + parts[1])
-    return items
+            registered_issues.append(parts[0].lower() + ' ' + parts[1])
+    return registered_issues
 
 
 def db_filename(local, acron, issueid, extension=''):
@@ -556,13 +551,13 @@ for f in [MSG_OK_FILE, MSG_ERROR_FILE]:
     file_delete(f)
 
 
-result = False
 expected = []
 comments = ''
 SCILISTA_DATETIME = None
 scilistaxml_items = []
 q_scilistaxml_items = 0
 if os.path.exists(SCILISTA_XML):
+
     scilista_items = file_readlines(SCILISTA)
 
     SCILISTA_DATETIME = datetime.fromtimestamp(
@@ -579,16 +574,17 @@ if os.path.exists(SCILISTA_XML):
 
     get_more_recent_title_issue_databases()
 
-    if os.path.isfile(ISSUE_DB+'.mst') or CONFIG.get('TEST') is True:
-        # v1.0 scilistatest.sh
-        registered_issues = get_registered_issues()
+    # v1.0 scilistatest.sh
+    registered_issues = get_registered_issues()
+    if registered_issues:
         coleta_items = check_scilista(scilistaxml_items, registered_issues)
         # v1.0 coletaxml.sh
         expected = coletar_items(coleta_items)
         if check_coletados(expected):
             scilista_items = get_new_scilista(scilistaxml_items, scilista_items)
     else:
-        logger.error('Not found: %s.mst' % ISSUE_DB)
+        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+
 else:
     logger.error('Not found: %s ' % SCILISTA_XML)
 
