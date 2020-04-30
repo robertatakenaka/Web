@@ -109,35 +109,6 @@ def fileinfo(filename):
     return 0, 0
 
 
-def get_more_recent_title_issue_databases():
-    # v1.0 scilistatest.sh [8-32]
-    """
-    Check which title/issue/code bases are more recent:
-        - from proc serial
-        - from XML serial
-    if from XML, copy the databases to serial folder
-    """
-    logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
-    xmlf_date, xmlf_size = fileinfo(XMLISSUEDB+'.mst')
-    proc_date, proc_size = fileinfo(PROCISSUEDB+'.mst')
-    if not proc_size or proc_date < xmlf_date:
-        logger.info(
-            'XMLPREPROC: Copia as bases title e issue de %s' %
-            CONFIG.get('XML_SERIAL_LOCATION'))
-        for folder in ['title', 'issue']:
-            os_system(
-                'cp -r {}/{} {}'.format(
-                    CONFIG.get('XML_SERIAL_LOCATION'),
-                    folder,
-                    PROC_SERIAL_LOCATION
-                    )
-                )
-    else:
-        logger.info(
-            'XMLPREPROC: Use as bases title e issue de %s' %
-            PROC_SERIAL_LOCATION)
-
-
 def file_delete(filename, raise_exc=False):
     try:
         os.unlink(filename)
@@ -173,6 +144,35 @@ def file_readlines(filename):
         return []
     else:
         return c
+
+
+def get_more_recent_title_issue_databases():
+    # v1.0 scilistatest.sh [8-32]
+    """
+    Check which title/issue/code bases are more recent:
+        - from proc serial
+        - from XML serial
+    if from XML, copy the databases to serial folder
+    """
+    logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
+    xmlf_date, xmlf_size = fileinfo(XMLISSUEDB+'.mst')
+    proc_date, proc_size = fileinfo(PROCISSUEDB+'.mst')
+    if not proc_size or proc_date < xmlf_date:
+        logger.info(
+            'XMLPREPROC: Copia as bases title e issue de %s' %
+            CONFIG.get('XML_SERIAL_LOCATION'))
+        for folder in ['title', 'issue']:
+            os_system(
+                'cp -r {}/{} {}'.format(
+                    CONFIG.get('XML_SERIAL_LOCATION'),
+                    folder,
+                    PROC_SERIAL_LOCATION
+                    )
+                )
+    else:
+        logger.info(
+            'XMLPREPROC: Use as bases title e issue de %s' %
+            PROC_SERIAL_LOCATION)
 
 
 def validate_scilista_item_format(row):
