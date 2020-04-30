@@ -188,11 +188,12 @@ def file_readlines(filename):
         return c
 
 
-def validate_scilista_item_format(parts):
+def validate_scilista_item_format(row):
+    parts = row.split()
     if len(parts) == 2:
-        return True
-    if len(parts) == 3 and parts[2] == 'del':
-        return True
+        return parts
+    if len(parts) == 3 and parts[-1] == 'del':
+        return parts
 
 
 # mx_pft(PROCISSUEDB, PFT, REGISTERED_ISSUES_FILENAME)
@@ -204,10 +205,7 @@ def mx_pft(base, PFT, display=False):
     result = './mx_pft.tmp'
     if os.path.isfile(result):
         file_delete(result)
-    cmd = 'mx {} "pft={}" now | sort -u > {}'.format(
-            base,
-            PFT,
-            result)
+    cmd = 'mx {} "pft={}" now | sort -u > {}'.format(base, PFT, result)
     os_system(cmd, display)
     r = file_readlines(result)
     file_delete(result)
@@ -217,7 +215,7 @@ def mx_pft(base, PFT, display=False):
 def get_registered_issues():
     """
     Check the issue database
-    Return the list of registered issues of issue 
+    Return the list of registered issues of issue
     """
     items = []
     if os.path.isfile(PROCISSUEDB+'.mst'):
@@ -233,12 +231,7 @@ def get_registered_issues():
 
 def db_filename(local, acron, issueid, extension=''):
     return '{}/{}/{}/base/{}{}'.format(
-            local,
-            acron,
-            issueid,
-            issueid,
-            extension
-            )
+        local, acron, issueid, issueid, extension)
 
 
 def get_articles(base):
@@ -246,70 +239,83 @@ def get_articles(base):
     Check the issue database
     Return a list of registered issues
     """
-    PFT = "if v706='h' then v702/ fi"
-    return mx_pft(base, PFT) or []
+    return mx_pft(base, "if v706='h' then v702/ fi") or []
 
 
-def check_ahead(proc_db_filename, xml_db_filename):
+def check_ahead_db_status(proc_db_filename, xml_db_filename):
+    """
+    Verifica a existencia das base ahead na area de processamento e
+    na area do xc
+    Caso existam as duas bases, verificar seu conteudo.
+    - verificar se a base na area de proc esta com documentos repetidos
+    - verificar se na base do xc ha documentos diferentes do que esta em proc,
+      se afirmativo, retorna o comando para fazer o append
+    """
     msg = 'Encontradas duas bases nahead \n {}\n {}.'.format(
             xml_db_filename, proc_db_filename)
 
-    done = False
-    xml_aop = sorted(get_articles(xml_db_filename))
-    proc_aop = sorted(get_articles(proc_db_filename))
+    xml_aop = get_articles(xml_db_filename)
+    proc_aop = get_articles(proc_db_filename)
 
-    t = len(proc_aop)
-    if t > len(list(set(proc_aop))):
-        logger.error('Found duplication in %s ' % proc_db_filename)
+    items = set(proc_aop)
+    if len(proc_aop) > len(items):
+        logger.error('Ha duplicacoes em %s ' % proc_db_filename)
+        for doc in items:
+            q = items.count(doc)
+            if q > 1:
+                logger.error('Repetido %s: %i vezes' % (doc, q))
+    else:
+        repeated = False
+        for item in xml_aop:
+            if item in proc_aop:
+                repeated = True
+                break
+        if repeated is False:
+            # fazer append
+            logger.info('COLETA XML: %s Executara o append' % msg)
+            return 'mx {} from=2 append={} -all now'.format(
+                        xml_db_filename,
+                        proc_db_filename
+                    )
+        logger.info((
+            'COLETA XML: %s '
+            'Desnecessario executar append pois tem mesmo conteudo' %
+            msg
+        ))
 
-    for item in xml_aop:
-        if item in proc_aop:
-            done = True
-            break
-    if done is False:
-        # fazer append
-        logger.info('COLETA XML: %s Executara o append' % msg)
-        return 'mx {} from=2 append={} -all now'.format(
-                    xml_db_filename,
-                    proc_db_filename
-                )
-    logger.info((
-        'COLETA XML: %s '
-        'Desnecessario executar append pois tem mesmo conteudo' %
-        msg
-    ))
 
-
-def check_data_for_coleta(acron, issueid):
+def check_db_status(acron, issueid):
     """
     Check the existence of acron/issue databases in XML serial
-    Copy this databases to serial folder
-    If the database is ahead and it exists in serial folder, they should be merged
-    Return a tuple items_to_copy, mx_append_db_commands, error_msg, expected_db_files_in_serial
+    If the database is ahead and it exists in serial folder,
+    they should be merged
+    Return a dict:
         items_to_copy: bases to copy from XML serial to serial
         mx_append_db_commands: commands to merge aop
         error_msg: error message
         expected_db_files_in_serial: list of files which have to be in serial
     """
-    xml_mst_filename = db_filename(CONFIG.get('XML_SERIAL_LOCATION'), acron, issueid, '.mst')
-    proc_mst_filename = db_filename(PROC_SERIAL_LOCATION, acron, issueid, '.mst')
-    xml_db_filename = db_filename(CONFIG.get('XML_SERIAL_LOCATION'), acron, issueid)
+    xml_db_filename = db_filename(
+        CONFIG.get('XML_SERIAL_LOCATION'), acron, issueid)
+    xml_mst_filename = xml_db_filename + '.mst'
     proc_db_filename = db_filename(PROC_SERIAL_LOCATION, acron, issueid)
+    proc_mst_filename = proc_db_filename + '.mst'
 
-    mx_append_db_commands = None
-    items_to_copy = None
-    expected_db_files_in_serial = [proc_mst_filename, proc_db_filename+'.xrf']
-    error_msg = None
+    status = {}
+    status["expected_db_files_in_serial"] = [
+        proc_mst_filename, proc_db_filename+'.xrf']
     if os.path.exists(xml_mst_filename):
+        mx_append_db_commands = None
         if 'nahead' in issueid and os.path.exists(proc_mst_filename):
-            mx_append_db_commands = check_ahead(proc_db_filename, xml_db_filename)
-            if mx_append_db_commands is None:
-                items_to_copy = (xml_db_filename, proc_db_filename)
+            mx_append_db_commands = check_ahead_db_status(
+                proc_db_filename, xml_db_filename)
+        if mx_append_db_commands:
+            status["mx_append_db_commands"] = mx_append_db_commands
         else:
-            items_to_copy = (xml_db_filename, proc_db_filename)
+            status["items_to_copy"] = (xml_db_filename, proc_db_filename)
     else:
-        error_msg = 'Not found {}'.format(xml_mst_filename)
-    return (items_to_copy, mx_append_db_commands, error_msg, expected_db_files_in_serial)
+        status["error_msg"] = 'Not found {}'.format(xml_mst_filename)
+    return status
 
 
 def coletaxml(xml_item, proc_item):
@@ -466,32 +472,28 @@ def check_scilista(scilistaxml_items, registered_issues):
     # v1.0 scilistatest.sh [36] (scilistatest.py)
     # v1.0 scilistatest.sh [41] (checkissue.py)
     logger.info('SCILISTA TESTE %i itens' % len(scilista_items))
-    coleta_items = []
-    scilista_ok = True
+    valid_issues_data = []
     n = 0
     for item in scilistaxml_items:
         n += 1
-        parts = item.split()
-        if validate_scilista_item_format(parts) is not True:
-            logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
-            scilista_ok = False
-        else:
+        parts = validate_scilista_item_format(item)
+        if parts:
             acron, issueid = parts[0], parts[1]
             issue = '{} {}'.format(acron, issueid)
 
             # v1.0 scilistatest.sh [41] (checkissue.py)
             if issue not in registered_issues:
                 logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
-                scilista_ok = False
             else:
-                items_to_copy, mx_append_db_commands, error_msg, expected_db_files_in_serial = check_data_for_coleta(acron, issueid)    
-                if error_msg is None:
-                    coleta_items.append((items_to_copy, mx_append_db_commands, expected_db_files_in_serial))
-                else:
-                    scilista_ok = False
+                db_status = check_db_status(acron, issueid)
+                error_msg = db_status.get("error_msg")
+                if error_msg:
                     logger.error('Linha %i: %s' % (n, error_msg))
-    if scilista_ok is True:
-        return coleta_items
+                else:
+                    valid_issues_data.append(db_status)
+        else:
+            logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
+    return valid_issues_data
 
 
 def coletar_items(coleta_items):
@@ -499,13 +501,14 @@ def coletar_items(coleta_items):
     expected = []
     coleta_items = coleta_items or []
     logger.info('COLETA XML: Coletar %i itens' % len(coleta_items))
-    for items_to_copy, mx_append_db_command, expected_db_files_in_serial in coleta_items:
-        expected.extend(expected_db_files_in_serial)
-        done = True
-        if items_to_copy is not None:
+    for item in coleta_items:
+        items_to_copy = item.get("items_to_copy")
+        mx_append_db_command = item.get("mx_append_db_command")
+        expected.extend(item.get("expected_db_files_in_serial", []))
+        if items_to_copy:
             xml_item, proc_item = items_to_copy
-            done = coletaxml(xml_item, proc_item)
-        if done and mx_append_db_command is not None:
+            coletaxml(xml_item, proc_item)
+        elif mx_append_db_command:
             logger.info('COLETA XML: %s' % mx_append_db_command)
             os_system(mx_append_db_command)
     return expected
@@ -521,7 +524,7 @@ def check_coletados(expected):
     return coletaxml_ok
 
 
-def get_new_scilista(scilistaxml_items, scilista_items):
+def join_scilistas(scilistaxml_items, scilista_items):
     # v1.0 coletaxml.sh [20] (joinlist.py)
     error = False
     scilista_items = merge_scilistas(scilistaxml_items, scilista_items)
@@ -574,14 +577,17 @@ if os.path.exists(SCILISTA_XML):
 
     get_more_recent_title_issue_databases()
 
-    # v1.0 scilistatest.sh
     registered_issues = get_registered_issues()
     if registered_issues:
-        coleta_items = check_scilista(scilistaxml_items, registered_issues)
+        # v1.0 scilistatest.sh
+        valid_scilista_items = check_scilista(
+            scilistaxml_items, registered_issues)
         # v1.0 coletaxml.sh
-        expected = coletar_items(coleta_items)
-        if check_coletados(expected):
-            scilista_items = get_new_scilista(scilistaxml_items, scilista_items)
+        if len(valid_scilista_items) == len(scilista_items):
+            expected = coletar_items(valid_scilista_items)
+            if check_coletados(expected):
+                scilista_items = join_scilistas(
+                    scilistaxml_items, scilista_items)
     else:
         logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
 
