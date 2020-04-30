@@ -1,17 +1,17 @@
 #!/usr/bin/env python2.7
 # coding: utf-8
 import os
-import shutil
 import ConfigParser
 from datetime import datetime
 import logging
+from copy import deepcopy
+from . import fs_commands
 
 
 REGISTERED_ISSUES_PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
 LOG_FILE = 'xmlpreproc_outs.log'
 ERROR_FILE = 'xmlpreproc_outs_scilista-erros.txt'
 PROC_SERIAL_LOCATION = '../serial'
-REGISTERED_ISSUES_FILENAME = '{}/registered_issues.txt'.format(PROC_SERIAL_LOCATION)
 SCILISTA_XML = '{}/scilistaxml.lst'.format(PROC_SERIAL_LOCATION)
 SCILISTA = '{}/scilista.lst'.format(PROC_SERIAL_LOCATION)
 PROCISSUEDB = '{}/issue/issue'.format(PROC_SERIAL_LOCATION)
@@ -91,6 +91,176 @@ def config_loggers():
     logger.addHandler(fh_errors)
 
 
+class XMLSerial:
+
+    def __init__(self, config):
+        self.cfg = config
+        self.fs = fs_commands.FSCommands(self.remote)
+        self._serial_path = self.cfg.get("XML_SERIAL_LOCATION")
+
+    @property
+    def remote(self):
+        if self.cfg.get('server'):
+            return fs_commands.Remote(
+                self.cfg.get('server'), self.cfg.get('user'))
+
+    @property
+    def serial_path(self):
+        return self.fs.path(self._serial_path)
+
+    def create_local_copy(self, db_filename, new_name):
+        if self.remote:
+            dest = "/tmp/{}".format(os.path.basename(db_filename))
+            self.fs.scp(db_filename+".mst", dest+".mst")
+            self.fs.scp(db_filename+".xrf", dest+".xrf")
+            return dest
+        return db_filename
+
+    def copy(self, folder, dest, nohup=False):
+        source = os.path(self.serial_path, folder)
+        cmd = self.fs.copy(source, dest)
+        fs_commands.run(cmd, nohup)
+
+    def rsync(self, folder, dest, nohup=False):
+        source = os.path(self.serial_path, folder)
+        cmd = self.fs.rsync(source, dest)
+        fs_commands.run(cmd, nohup)
+
+    def exists(self, path):
+        return self.fs.exists(path)
+
+    @property
+    def issue_db_path(self):
+        return '{}/issue/issue'.format(self.serial_path)
+
+    def get_most_recent_title_issue_databases(self):
+        # v1.0 scilistatest.sh [8-32]
+        """
+        Check which title/issue/code bases are more recent:
+            - from proc serial
+            - from XML serial
+        if from XML, copy the databases to serial folder
+        """
+        logger.info(
+            'XMLPREPROC: Seleciona as bases title e issue mais atualizada')
+        logger.info(
+            'XMLPREPROC: Copia as bases title e issue de %s' %
+            CONFIG.get('XML_SERIAL_LOCATION'))
+        for folder in ['title', 'issue']:
+            self.rsync(folder, PROC_SERIAL_LOCATION)
+
+    def check_scilista_items_db(self, registered_items):
+        # v1.0 scilistatest.sh [41] (checkissue.py)
+        logger.info('SCILISTA TESTE %i itens' % len(registered_items))
+        valid_issue_db = []
+        for acron, issueid in registered_items:
+            db_status = self._check_db_status(acron, issueid)
+            error_msg = db_status.get("error_msg")
+            if error_msg:
+                logger.error(error_msg)
+            else:
+                valid_issue_db.append(db_status)
+        return valid_issue_db
+
+    def _check_db_status(self, acron, issueid):
+        """
+        Check the existence of acron/issue databases in XML serial
+        If the database is ahead and it exists in serial folder,
+        they should be merged
+        Return a dict:
+            items_to_copy: bases to copy from XML serial to serial
+            mx_append: commands to merge aop
+            error_msg: error message
+            files_info: files which have to be in serial
+        """
+        xml_db_filename = db_filename(self.serial_path, acron, issueid)
+        xml_mst_filename = xml_db_filename + '.mst'
+        proc_db_filename = db_filename(PROC_SERIAL_LOCATION, acron, issueid)
+        proc_mst_filename = proc_db_filename + '.mst'
+
+        status = {}
+        if not self.exists(xml_mst_filename):
+            status["error_msg"] = 'Not found {}'.format(xml_mst_filename)
+            return status
+
+        status["files_info"] = [
+            (f, fileinfo(f))
+            for f in [proc_mst_filename, proc_db_filename+'.xrf']
+        ]
+        mx_append = None
+        if 'nahead' in issueid and os.path.exists(proc_mst_filename):
+            mx_append = self._check_ahead_db_status(
+                proc_db_filename, xml_db_filename)
+        if mx_append:
+            status["mx_append"] = mx_append
+        else:
+            status["items_to_copy"] = (xml_db_filename, proc_db_filename)
+
+    def _check_ahead_db_status(self, proc_db_filename, xml_db_filename):
+        """
+        Verifica a existencia das base ahead na area de processamento e
+        na area do xc
+        Caso existam as duas bases, verificar seu conteudo.
+        - verificar se a base na area de proc esta com documentos repetidos
+        - verificar se na base do xc ha documentos diferentes do que esta em proc,
+          se afirmativo, retorna o comando para fazer o append
+        """
+        msg = 'Encontradas duas bases nahead \n {}\n {}.'.format(
+                xml_db_filename, proc_db_filename)
+
+        proc_aop = get_articles(proc_db_filename)
+        proc_sorted, proc_rep = get_sorted_list_and_repeated_items(proc_aop)
+        if proc_rep:
+            logger.error('Ha duplicacoes em %s ' % proc_db_filename)
+            for doc, q in proc_rep:
+                logger.error('Repetido %s: %i vezes' % (doc, q))
+        else:
+            local_xml_db = self.create_local_copy(
+                xml_db_filename, proc_db_filename + '_tmp')
+
+            xml_aop = get_articles(local_xml_db)
+            repeated = set(xml_aop).intersection(set(proc_aop))
+            if not repeated:
+                # fazer append
+                logger.info('COLETA XML: %s Executara o append' % msg)
+                return 'mx {} from=2 append={} -all now'.format(
+                            local_xml_db,
+                            proc_db_filename
+                        )
+            logger.info((
+                'COLETA XML: %s '
+                'Desnecessario executar append pois tem mesmo conteudo' %
+                msg
+            ))
+
+    def update_proc_serial(self, items_info):
+        # v1.0 coletaxml.sh [16] (getbasesxml4proc.py)
+        items_info = items_info or []
+        logger.info('COLETA XML: Coletar %i itens' % len(items_info))
+        for item in items_info:
+            items_to_copy = item.get("items_to_copy")
+            mx_append = item.get("mx_append")
+            if items_to_copy:
+                xml_item, proc_item = items_to_copy
+                self._copy_to_proc_serial(xml_item, proc_item)
+            elif mx_append:
+                logger.info('COLETA XML: %s' % mx_append)
+                os_system(mx_append)
+
+    def _copy_to_proc_serial(self, xml_item, proc_item):
+        logger.info('COLETA XML: %s %s' % (xml_item, proc_item))
+        xml_mst_filename = xml_item+'.mst'
+        xml_xrf_filename = xml_item+'.xrf'
+        proc_mst_filename = proc_item+'.mst'
+        proc_xrf_filename = proc_item+'.xrf'
+
+        path = os.path.dirname(proc_mst_filename)
+        if not os.path.isdir(path):
+            os.makedirs(path)
+        self.rsync(xml_mst_filename, proc_mst_filename)
+        self.rsync(xml_xrf_filename, proc_xrf_filename)
+
+
 def os_system(cmd, display=True):
     """
     Execute a command
@@ -157,35 +327,6 @@ def get_sorted_list_and_repeated_items(list_items, sorted_function=sorted):
     return _sorted, repeated
 
 
-def get_more_recent_title_issue_databases():
-    # v1.0 scilistatest.sh [8-32]
-    """
-    Check which title/issue/code bases are more recent:
-        - from proc serial
-        - from XML serial
-    if from XML, copy the databases to serial folder
-    """
-    logger.info('XMLPREPROC: Seleciona as bases title e issue mais atualizada')
-    xmlf_date, xmlf_size = fileinfo(XMLISSUEDB+'.mst')
-    proc_date, proc_size = fileinfo(PROCISSUEDB+'.mst')
-    if not proc_size or proc_date < xmlf_date:
-        logger.info(
-            'XMLPREPROC: Copia as bases title e issue de %s' %
-            CONFIG.get('XML_SERIAL_LOCATION'))
-        for folder in ['title', 'issue']:
-            os_system(
-                'cp -r {}/{} {}'.format(
-                    CONFIG.get('XML_SERIAL_LOCATION'),
-                    folder,
-                    PROC_SERIAL_LOCATION
-                    )
-                )
-    else:
-        logger.info(
-            'XMLPREPROC: Use as bases title e issue de %s' %
-            PROC_SERIAL_LOCATION)
-
-
 # mx_pft(PROCISSUEDB, PFT, REGISTERED_ISSUES_FILENAME)
 def mx_pft(base, PFT, display=False):
     """
@@ -232,102 +373,6 @@ def get_articles(base):
     return mx_pft(base, "if v706='h' then v702/ fi") or []
 
 
-def check_ahead_db_status(proc_db_filename, xml_db_filename):
-    """
-    Verifica a existencia das base ahead na area de processamento e
-    na area do xc
-    Caso existam as duas bases, verificar seu conteudo.
-    - verificar se a base na area de proc esta com documentos repetidos
-    - verificar se na base do xc ha documentos diferentes do que esta em proc,
-      se afirmativo, retorna o comando para fazer o append
-    """
-    msg = 'Encontradas duas bases nahead \n {}\n {}.'.format(
-            xml_db_filename, proc_db_filename)
-
-    xml_aop = get_articles(xml_db_filename)
-    proc_aop = get_articles(proc_db_filename)
-
-    proc_sorted, proc_rep = get_sorted_list_and_repeated_items(proc_aop)
-    if proc_rep:
-        logger.error('Ha duplicacoes em %s ' % proc_db_filename)
-        for doc, q in proc_rep:
-            logger.error('Repetido %s: %i vezes' % (doc, q))
-    else:
-        repeated = set(xml_aop).intersection(set(proc_aop))
-        if not repeated:
-            # fazer append
-            logger.info('COLETA XML: %s Executara o append' % msg)
-            return 'mx {} from=2 append={} -all now'.format(
-                        xml_db_filename,
-                        proc_db_filename
-                    )
-        logger.info((
-            'COLETA XML: %s '
-            'Desnecessario executar append pois tem mesmo conteudo' %
-            msg
-        ))
-
-
-def check_db_status(acron, issueid):
-    """
-    Check the existence of acron/issue databases in XML serial
-    If the database is ahead and it exists in serial folder,
-    they should be merged
-    Return a dict:
-        items_to_copy: bases to copy from XML serial to serial
-        mx_append_db_commands: commands to merge aop
-        error_msg: error message
-        expected_db_files_in_serial: list of files which have to be in serial
-    """
-    xml_db_filename = db_filename(
-        CONFIG.get('XML_SERIAL_LOCATION'), acron, issueid)
-    xml_mst_filename = xml_db_filename + '.mst'
-    proc_db_filename = db_filename(PROC_SERIAL_LOCATION, acron, issueid)
-    proc_mst_filename = proc_db_filename + '.mst'
-
-    status = {}
-    status["expected_db_files_in_serial"] = [
-        proc_mst_filename, proc_db_filename+'.xrf']
-    if os.path.exists(xml_mst_filename):
-        mx_append_db_commands = None
-        if 'nahead' in issueid and os.path.exists(proc_mst_filename):
-            mx_append_db_commands = check_ahead_db_status(
-                proc_db_filename, xml_db_filename)
-        if mx_append_db_commands:
-            status["mx_append_db_commands"] = mx_append_db_commands
-        else:
-            status["items_to_copy"] = (xml_db_filename, proc_db_filename)
-    else:
-        status["error_msg"] = 'Not found {}'.format(xml_mst_filename)
-    return status
-
-
-def coletaxml(xml_item, proc_item):
-    xml_mst_filename = xml_item+'.mst'
-    proc_mst_filename = proc_item+'.mst'
-    xml_xrf_filename = xml_item+'.xrf'
-    proc_xrf_filename = proc_item+'.xrf'
-
-    errors = []
-    if os.path.exists(xml_mst_filename):
-        path = os.path.dirname(proc_mst_filename)
-        if not os.path.isdir(path):
-            os.makedirs(path)
-        if os.path.isdir(path):
-            shutil.copyfile(xml_mst_filename, proc_mst_filename)
-            shutil.copyfile(xml_xrf_filename, proc_xrf_filename)
-        else:
-            errors.append('Nao foi possivel criar {}'.format(path))
-    if not os.path.exists(proc_mst_filename):
-        errors.append('Nao foi possivel criar {}'.format(proc_mst_filename))
-    if not os.path.exists(proc_xrf_filename):
-        errors.append('Nao foi possivel criar {}'.format(proc_xrf_filename))
-    if len(errors) > 0:
-        logger.error('\n'.join(errors))
-        return False
-    return True
-
-
 def validate_scilista_item_format(row):
     parts = row.split()
     if len(parts) == 2:
@@ -366,7 +411,7 @@ def join_scilistas_and_update_scilista_file(scilistaxml_items, scilista_items):
 def check_scilista_items_are_registered(scilista_items, registered_issues):
     # v1.0 scilistatest.sh [41] (checkissue.py)
     logger.info('SCILISTA TESTE %i itens' % len(scilista_items))
-    valid_issues_data = []
+    registered_items = []
     n = 0
     for item in scilista_items:
         n += 1
@@ -374,75 +419,31 @@ def check_scilista_items_are_registered(scilista_items, registered_issues):
         if parts:
             acron, issueid = parts[0], parts[1]
             issue = '{} {}'.format(acron, issueid)
-
             # v1.0 scilistatest.sh [41] (checkissue.py)
-            if issue not in registered_issues:
-                logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
+            if issue in registered_issues:
+                registered_items.append((acron, issueid))
             else:
-                db_status = check_db_status(acron, issueid)
-                error_msg = db_status.get("error_msg")
-                if error_msg:
-                    logger.error('Linha %i: %s' % (n, error_msg))
-                else:
-                    valid_issues_data.append(db_status)
+                logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
         else:
             logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
-    return valid_issues_data
+    return registered_items
 
 
-def check_scilista_xml(registered_issues, scilistaxml_items):
-    # v1.0 scilistatest.sh [6]
-    if not scilistaxml_items:
-        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
-        return
-
-    sorted_items, repeated = get_sorted_list_and_repeated_items(
-        scilistaxml_items)
-    if repeated:
-        logger.error((
-            '%s contem itens repetidos.'
-            ' Verificar e enviar novamente.' % SCILISTA_XML))
-
-    # v1.0 scilistatest.sh
-    # v1.0 scilistatest.sh [36] (scilistatest.py)
-    valid_scilista_items = check_scilista_items_are_registered(
-        sorted_items, registered_issues)
-    # v1.0 coletaxml.sh
-    if not repeated and len(valid_scilista_items) == len(scilistaxml_items):
-        return sorted_items
-
-
-def coletar_items(coleta_items):
-    # v1.0 coletaxml.sh [16] (getbasesxml4proc.py)
-    expected = []
-    coleta_items = coleta_items or []
-    logger.info('COLETA XML: Coletar %i itens' % len(coleta_items))
-    for item in coleta_items:
-        items_to_copy = item.get("items_to_copy")
-        mx_append_db_command = item.get("mx_append_db_command")
-        expected.extend(item.get("expected_db_files_in_serial", []))
-        if items_to_copy:
-            xml_item, proc_item = items_to_copy
-            coletaxml(xml_item, proc_item)
-        elif mx_append_db_command:
-            logger.info('COLETA XML: %s' % mx_append_db_command)
-            os_system(mx_append_db_command)
-    return expected
-
-
-def check_coletados(expected):
-    completed = len(expected) > 0
+def is_proc_serial_updated(items):
+    try_again = []
     logger.info('COLETA XML: Verificar se coleta foi bem sucedida')
-    for file in expected:
-        if not os.path.exists(file):
-            completed = False
-            logger.error('Coleta incompleta. Falta %s' % file)
-    return completed
+    for item in items:
+        for info in item["files_info"]:
+            path, status = info
+            if fileinfo(path) == status:
+                try_again.append(item)
+                break
+    return try_again
 
 
-def check_scilista_xml_and_coleta_xml(scilistaxml_items):
+def check_scilista_xml_and_coleta_xml(scilistaxml_items, xml_serial):
     # Garante que title e issue na pasta de processamento estao atualizadas
-    get_more_recent_title_issue_databases()
+    xml_serial.get_most_recent_title_issue_databases()
 
     # obtem lista de issues registrados
     registered_issues = get_registered_issues()
@@ -450,15 +451,40 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items):
         logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
         return
 
-    # verificar o conteúdo da scilista xml contra os issues registrados
-    scilistaxml_items = check_scilista_xml(
-        registered_issues, scilistaxml_items)
-    if scilistaxml_items:
-        # estando completamente valida coleta os dados dos issues
-        expected = coletar_items(scilistaxml_items)
+    if not scilistaxml_items:
+        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
+        return
+
+    # verificar se ha repeticao
+    sorted_items, repeated = get_sorted_list_and_repeated_items(
+        scilistaxml_items)
+    if repeated:
+        logger.error(('%s contem itens repetidos. '
+                      'Verificar e enviar novamente.' % SCILISTA_XML))
+
+    registered_items = check_scilista_items_are_registered(
+        sorted_items, registered_issues)
+
+    valid_scilista_items = xml_serial.check_scilista_items_db(registered_items)
+
+    if not repeated and len(valid_scilista_items) == len(scilistaxml_items):
+        # estando scilista completamente valida,
+        # entao coleta os dados dos issues
+        xml_serial.update_proc_serial(valid_scilista_items)
         # verifica se as bases dos artigos estao presentes na area de proc
-        if expected and check_coletados(expected):
-            return scilistaxml_items
+        items = deepcopy(valid_scilista_items)
+        for i in range(0, 3):
+            items = is_proc_serial_updated(items)
+            if len(items) == 0:
+                break
+            # tenta atualizar aquilo que não pode ser atualizado
+            xml_serial.update_proc_serial(items)
+        if len(items) > 0:
+            logger.error("Coleta incompleta")
+            for item in items:
+                for f in item["files_info"]:
+                    logger.error('%s nao atualizado' % f)
+        return True
 
 
 def scilista_info(name, scilista_items):
@@ -605,16 +631,15 @@ if __name__ == "__main__":
 
     xml_scilista_datetime = datetime.fromtimestamp(
                 os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
-
     os_system('dos2unix {}'.format(SCILISTA_XML))
     xml_scilista_items = file_readlines(SCILISTA_XML)
     htm_scilista_items = file_readlines(SCILISTA)
 
-    xml_items = check_scilista_xml_and_coleta_xml(xml_scilista_items)
-
-    if xml_items:
+    xml_serial = XMLSerial(CONFIG)
+    if check_scilista_xml_and_coleta_xml(xml_scilista_items, xml_serial):
         # atualiza a scilista na area de processamento
-        join_scilistas_and_update_scilista_file(xml_items, htm_scilista_items)
+        join_scilistas_and_update_scilista_file(
+            xml_scilista_items, htm_scilista_items)
 
     next_action = report(xml_scilista_datetime, start_datetime,
                          xml_scilista_items, htm_scilista_items)
