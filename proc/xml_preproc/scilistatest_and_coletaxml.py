@@ -146,6 +146,17 @@ def file_readlines(filename):
         return c
 
 
+def get_sorted_list_and_repeated_items(list_items, sorted_function=sorted):
+    repeated = []
+    _sorted = sorted_function(list_items)
+    if len(list_items) > len(_sorted):
+        repeated = [
+            (item, list_items.count(item))
+            for item in _sorted
+        ]
+    return _sorted, repeated
+
+
 def get_more_recent_title_issue_databases():
     # v1.0 scilistatest.sh [8-32]
     """
@@ -173,14 +184,6 @@ def get_more_recent_title_issue_databases():
         logger.info(
             'XMLPREPROC: Use as bases title e issue de %s' %
             PROC_SERIAL_LOCATION)
-
-
-def validate_scilista_item_format(row):
-    parts = row.split()
-    if len(parts) == 2:
-        return parts
-    if len(parts) == 3 and parts[-1] == 'del':
-        return parts
 
 
 # mx_pft(PROCISSUEDB, PFT, REGISTERED_ISSUES_FILENAME)
@@ -325,6 +328,14 @@ def coletaxml(xml_item, proc_item):
     return True
 
 
+def validate_scilista_item_format(row):
+    parts = row.split()
+    if len(parts) == 2:
+        return parts
+    if len(parts) == 3 and parts[-1] == 'del':
+        return parts
+
+
 def sort_scilista(scilista_items):
     items = list(set([item.strip() for item in scilista_items]))
     dellist = []
@@ -343,15 +354,13 @@ def sort_scilista(scilista_items):
     return sorted(dellist) + sorted(prlist) + sorted(naheadlist) + sorted(issuelist)
 
 
-def get_sorted_list_and_repeated_items(list_items, sorted_function=sorted):
-    repeated = []
-    _sorted = sorted_function(list_items)
-    if len(list_items) > len(_sorted):
-        repeated = [
-            (item, list_items.count(item))
-            for item in _sorted
-        ]
-    return _sorted, repeated
+def join_scilistas_and_update_scilista_file(scilistaxml_items, scilista_items):
+    # v1.0 coletaxml.sh [20] (joinlist.py)
+    new_scilista_items = sort_scilista(scilistaxml_items + scilista_items)
+    content = '\n'.join(new_scilista_items)+'\n'
+    file_write(SCILISTA, content)
+    logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
+    logger.info(content)
 
 
 def check_scilista_items_are_registered(scilista_items, registered_issues):
@@ -381,6 +390,28 @@ def check_scilista_items_are_registered(scilista_items, registered_issues):
     return valid_issues_data
 
 
+def check_scilista_xml(registered_issues, scilistaxml_items):
+    # v1.0 scilistatest.sh [6]
+    if not scilistaxml_items:
+        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
+        return
+
+    sorted_items, repeated = get_sorted_list_and_repeated_items(
+        scilistaxml_items)
+    if repeated:
+        logger.error((
+            '%s contem itens repetidos.'
+            ' Verificar e enviar novamente.' % SCILISTA_XML))
+
+    # v1.0 scilistatest.sh
+    # v1.0 scilistatest.sh [36] (scilistatest.py)
+    valid_scilista_items = check_scilista_items_are_registered(
+        sorted_items, registered_issues)
+    # v1.0 coletaxml.sh
+    if not repeated and len(valid_scilista_items) == len(scilistaxml_items):
+        return sorted_items
+
+
 def coletar_items(coleta_items):
     # v1.0 coletaxml.sh [16] (getbasesxml4proc.py)
     expected = []
@@ -407,36 +438,6 @@ def check_coletados(expected):
             completed = False
             logger.error('Coleta incompleta. Falta %s' % file)
     return completed
-
-
-def join_scilistas_and_update_scilista_file(scilistaxml_items, scilista_items):
-    # v1.0 coletaxml.sh [20] (joinlist.py)
-    new_scilista_items = sort_scilista(scilistaxml_items + scilista_items)
-    content = '\n'.join(new_scilista_items)+'\n'
-    file_write(SCILISTA, content)
-    logger.info('JOIN SCILISTAS: %s + %s' % (SCILISTA, SCILISTA_XML))
-    logger.info(content)
-
-
-def check_scilista_xml(registered_issues, scilistaxml_items):
-    # v1.0 scilistatest.sh [6]
-    if not scilistaxml_items:
-        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
-        return
-
-    sorted_items, repeated = scilista_info(SCILISTA_XML, scilistaxml_items)
-    if repeated:
-        logger.error((
-            '%s contem itens repetidos.'
-            ' Verificar e enviar novamente.' % SCILISTA_XML))
-
-    # v1.0 scilistatest.sh
-    # v1.0 scilistatest.sh [36] (scilistatest.py)
-    valid_scilista_items = check_scilista_items_are_registered(
-        scilistaxml_items, registered_issues)
-    # v1.0 coletaxml.sh
-    if not repeated and len(valid_scilista_items) == len(scilistaxml_items):
-        return sorted_items
 
 
 def check_scilista_xml_and_coleta_xml(scilistaxml_items):
