@@ -244,20 +244,14 @@ def check_ahead_db_status(proc_db_filename, xml_db_filename):
     xml_aop = get_articles(xml_db_filename)
     proc_aop = get_articles(proc_db_filename)
 
-    items = set(proc_aop)
-    if len(proc_aop) > len(items):
+    proc_sorted, proc_rep = get_sorted_list_and_repeated_items(proc_aop)
+    if proc_rep:
         logger.error('Ha duplicacoes em %s ' % proc_db_filename)
-        for doc in items:
-            q = proc_aop.count(doc)
-            if q > 1:
-                logger.error('Repetido %s: %i vezes' % (doc, q))
+        for doc, q in proc_rep:
+            logger.error('Repetido %s: %i vezes' % (doc, q))
     else:
-        repeated = False
-        for item in xml_aop:
-            if item in proc_aop:
-                repeated = True
-                break
-        if repeated is False:
+        repeated = set(xml_aop).intersection(set(proc_aop))
+        if not repeated:
             # fazer append
             logger.info('COLETA XML: %s Executara o append' % msg)
             return 'mx {} from=2 append={} -all now'.format(
@@ -349,92 +343,12 @@ def sort_scilista(scilista_items):
     return sorted(dellist) + sorted(prlist) + sorted(naheadlist) + sorted(issuelist)
 
 
-def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, email_msg_file):
-    if CONFIG.get('TEST') is True:
-        mailto = CONFIG.get('MAIL_TO_TEST')
-        mailcc = CONFIG.get('MAIL_TO_TEST')
-        mailbcc = CONFIG.get('MAIL_TO_TEST')
-
-    _mailbcc = '-b "{}"'.format(mailbcc) if mailbcc else ''
-    _subject = '[XML PREPROC][{}][{}] {}'.format(
-            CONFIG.get('COLLECTION'),
-            scilista_date[:10],
-            subject
-        )
-    cmd = 'mailx {} {} -c "{}" -s "{}" < {}'.format(
-            mailto,
-            _mailbcc,
-            mailcc,
-            _subject,
-            email_msg_file
-        )
-    os_system(cmd)
-
-
-def create_msg_instructions(errors):
-    instructions = "Nenhum erro encontrado. Processamento sera iniciado em breve."
-    fim = '[pok]'
-    if errors:
-        fim = ''
-        instructions = """
-Foram encontrados erros no procedimento de coleta de XML.
-Veja abaixo.
-Caso o erro seja na scilistaxml ou fasciculo nao registrado,
-faca as correcoes e solicite o processamento novamente.
-Caso contrario, aguarde instrucoes.
-
-Erros
------
-{}
-    """.format(errors)
-    return instructions, fim
-
-
-def get_email_message(scilista_date, proc_date, instructions, numbers, fim):
-    return """
-    ATENCAO: Mensagem automatica. Nao responder a este e-mail.
-
-Prezados,
-
-Colecao: {}
-Data   da scilista:    {}
-Inicio da verificacao: {}
-
-{}
-
-
-{}
-
-----
-{}
-    """.format(
-        CONFIG.get('COLLECTION'),
-        scilista_date,
-        proc_date,
-        instructions,
-        numbers,
-        fim
-        )
-
-
-def create_msg_file(scilista_date, proc_date, errors, scilistas):
-    email_msg_file = 'xmlpreproc_outs_msg_email.txt'
-    file_write(email_msg_file)
-    errors = errors or ''
-    instructions, fim = create_msg_instructions(errors)
-    msg = get_email_message(
-        scilista_date, proc_date, instructions, scilistas, fim)
-    file_write(email_msg_file, msg)
-    logger.info(msg)
-    return email_msg_file
-
-
-def get_scilista_sorted_and_repeated_items(scilista_name, scilista_items):
+def get_sorted_list_and_repeated_items(list_items, sorted_function=sorted):
     repeated = []
-    _sorted = sort_scilista(scilista_items)
-    if len(scilista_items) > len(_sorted):
+    _sorted = sorted_function(list_items)
+    if len(list_items) > len(_sorted):
         repeated = [
-            (item, scilista_items.count(item))
+            (item, list_items.count(item))
             for item in _sorted
         ]
     return _sorted, repeated
@@ -549,8 +463,8 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items):
 def scilista_info(name, scilista_items):
     rows = []
     name = "{} ({} itens)".format(name, len(scilista_items))
-    _sorted, repeated = get_scilista_sorted_and_repeated_items(
-        name, scilista_items)
+    _sorted, repeated = get_sorted_list_and_repeated_items(
+        scilista_items, sort_scilista)
 
     rows.append(name)
     rows.append('='*len(name))
@@ -562,6 +476,86 @@ def scilista_info(name, scilista_items):
         rows.extend(["{} ({}}x)".format(item, qtd) for item, qtd in repeated])
         rows.append("")
     return "\n".join(rows)
+
+
+def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, email_msg_file):
+    if CONFIG.get('TEST') is True:
+        mailto = CONFIG.get('MAIL_TO_TEST')
+        mailcc = CONFIG.get('MAIL_TO_TEST')
+        mailbcc = CONFIG.get('MAIL_TO_TEST')
+
+    _mailbcc = '-b "{}"'.format(mailbcc) if mailbcc else ''
+    _subject = '[XML PREPROC][{}][{}] {}'.format(
+            CONFIG.get('COLLECTION'),
+            scilista_date[:10],
+            subject
+        )
+    cmd = 'mailx {} {} -c "{}" -s "{}" < {}'.format(
+            mailto,
+            _mailbcc,
+            mailcc,
+            _subject,
+            email_msg_file
+        )
+    os_system(cmd)
+
+
+def create_msg_instructions(errors):
+    instructions = "Nenhum erro encontrado. Processamento sera iniciado em breve."
+    fim = '[pok]'
+    if errors:
+        fim = ''
+        instructions = """
+Foram encontrados erros no procedimento de coleta de XML.
+Veja abaixo.
+Caso o erro seja na scilistaxml ou fasciculo nao registrado,
+faca as correcoes e solicite o processamento novamente.
+Caso contrario, aguarde instrucoes.
+
+Erros
+-----
+{}
+    """.format(errors)
+    return instructions, fim
+
+
+def get_email_message(scilista_date, proc_date, instructions, numbers, fim):
+    return """
+    ATENCAO: Mensagem automatica. Nao responder a este e-mail.
+
+Prezados,
+
+Colecao: {}
+Data   da scilista:    {}
+Inicio da verificacao: {}
+
+{}
+
+
+{}
+
+----
+{}
+    """.format(
+        CONFIG.get('COLLECTION'),
+        scilista_date,
+        proc_date,
+        instructions,
+        numbers,
+        fim
+        )
+
+
+def create_msg_file(scilista_date, proc_date, errors, scilistas):
+    email_msg_file = 'xmlpreproc_outs_msg_email.txt'
+    file_write(email_msg_file)
+    errors = errors or ''
+    instructions, fim = create_msg_instructions(errors)
+    msg = get_email_message(
+        scilista_date, proc_date, instructions, scilistas, fim)
+    file_write(email_msg_file, msg)
+    logger.info(msg)
+    return email_msg_file
 
 
 def report(SCILISTA_DATETIME, PROC_DATETIME,
