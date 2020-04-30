@@ -61,8 +61,7 @@ class Config:
 REGISTERED_ISSUES_PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
 LOG_FILE = 'xmlpreproc_outs.log'
 ERROR_FILE = 'xmlpreproc_outs_scilista-erros.txt'
-MSG_ERROR_FILE = 'xmlpreproc_outs_msg-erro.txt'
-MSG_OK_FILE = 'xmlpreproc_outs_msg-ok.txt'
+EMAIL_MSG_FILE = 'xmlpreproc_outs_msg_email.txt'
 PROC_DATETIME = datetime.now().isoformat().replace('T', ' ')[:-7]
 
 
@@ -261,7 +260,7 @@ def check_ahead_db_status(proc_db_filename, xml_db_filename):
     if len(proc_aop) > len(items):
         logger.error('Ha duplicacoes em %s ' % proc_db_filename)
         for doc in items:
-            q = items.count(doc)
+            q = proc_aop.count(doc)
             if q > 1:
                 logger.error('Repetido %s: %i vezes' % (doc, q))
     else:
@@ -362,21 +361,16 @@ def sort_scilista(scilista_items):
     return sorted(dellist) + sorted(prlist) + sorted(naheadlist) + sorted(issuelist)
 
 
-def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, msg_filename):
+def send_mail(mailto, mailbcc, mailcc, subject, scilista_date):
     if CONFIG.get('TEST') is True:
         mailto = CONFIG.get('MAIL_TO_TEST')
         mailcc = CONFIG.get('MAIL_TO_TEST')
         mailbcc = CONFIG.get('MAIL_TO_TEST')
 
-    d = scilista_date
-    if d is not None:
-        d = scilista_date[:10]
-    _mailbcc = ''
-    if mailbcc is not None:
-        _mailbcc = '-b "{}"'.format(mailbcc)
+    _mailbcc = '-b "{}"'.format(mailbcc) if mailbcc else ''
     _subject = '[XML PREPROC][{}][{}] {}'.format(
             CONFIG.get('COLLECTION'),
-            d,
+            scilista_date[:10],
             subject
         )
     cmd = 'mailx {} {} -c "{}" -s "{}" < {}'.format(
@@ -384,15 +378,15 @@ def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, msg_filename):
             _mailbcc,
             mailcc,
             _subject,
-            msg_filename
+            EMAIL_MSG_FILE
         )
     os_system(cmd)
 
 
-def create_msg_instructions(errors=None):
+def create_msg_instructions(errors):
     instructions = "Nenhum erro encontrado. Processamento sera iniciado em breve."
     fim = '[pok]'
-    if len(errors) > 0:
+    if errors:
         fim = ''
         instructions = """
 Foram encontrados erros no procedimento de coleta de XML.
@@ -408,7 +402,7 @@ Erros
     return instructions, fim
 
 
-def get_email_message(scilista_date, proc_date, instructions, scilista_content, diffs, fim, numbers):
+def get_email_message(scilista_date, proc_date, instructions, numbers, fim):
     return """
     ATENCAO: Mensagem automatica. Nao responder a este e-mail.
 
@@ -421,12 +415,6 @@ Inicio da verificacao: {}
 {}
 
 
-   {}
-
-
-{}
-Conteudo da scilistaxml.lst
----------------------------
 {}
 
 ----
@@ -435,24 +423,31 @@ Conteudo da scilistaxml.lst
         CONFIG.get('COLLECTION'),
         scilista_date,
         proc_date,
-        numbers,
         instructions,
-        diffs,
-        scilista_content,
+        numbers,
         fim
         )
 
 
-def create_msg_file(scilista_date, proc_date, errors=None, comments=None, diffs=None):
+def create_msg_file(scilista_date, proc_date, errors, scilistas):
     errors = errors or ''
-    msg_file = MSG_ERROR_FILE if len(errors) > 0 else MSG_OK_FILE
-    scilista_content = file_read(SCILISTA_XML) or 'Not found {}'.format(SCILISTA_XML)
     instructions, fim = create_msg_instructions(errors)
-    msg = get_email_message(scilista_date, proc_date, instructions, scilista_content, diffs, fim, comments)
+    msg = get_email_message(
+        scilista_date, proc_date, instructions, scilistas, fim)
 
-    file_write(msg_file, msg)
+    file_write(EMAIL_MSG_FILE, msg)
     logger.info(msg)
-    return msg_file
+
+
+def get_scilista_sorted_and_repeated_items(scilista_name, scilista_items):
+    repeated = []
+    _sorted = sort_scilista(scilista_items)
+    if len(scilista_items) > len(_sorted):
+        repeated = [
+            (item, scilista_items.count(item))
+            for item in _sorted
+        ]
+    return _sorted, repeated
 
 
 def check_scilista_items_are_registered(scilista_items, registered_issues):
@@ -519,17 +514,8 @@ def join_scilistas_and_update_scilista_file(scilistaxml_items, scilista_items):
     logger.info(content)
 
 
-def list_diff(lista_maior, lista_menor):
-    return [item for item in lista_maior if item not in lista_menor]
-
-
 def check_scilista_xml(registered_issues):
     # v1.0 scilistatest.sh [6]
-    SCILISTA_DATETIME = datetime.fromtimestamp(
-        os.path.getmtime(SCILISTA_XML)
-        ).isoformat().replace('T', ' ')
-    logger.info('XMLPREPROC: SCILISTA XML: %s ' % SCILISTA_DATETIME)
-
     os_system('dos2unix {}'.format(SCILISTA_XML))
 
     scilistaxml_items = file_readlines(SCILISTA_XML)
@@ -577,6 +563,43 @@ def check_scilista_xml_and_coleta_xml():
                 scilistaxml_items, scilista_items)
 
 
+def scilista_info(name, scilista_items):
+    rows = []
+    name = "{} ({} itens)".format(name, len(scilista_items))
+    _sorted, repeated = get_scilista_sorted_and_repeated_items(
+        name, scilista_items)
+
+    rows.append(name)
+    rows.append('='*len(name))
+    rows.append('')
+    rows.extend(_sorted)
+    rows.append("")
+    if repeated:
+        rows.append("Repetidos")
+        rows.extend(["{} ({}}x)".format(item, qtd) for item, qtd in repeated])
+        rows.append("")
+    return "\n".join(rows)
+
+
+def report(SCILISTA_DATETIME, scilista_items, scilistaxml_items, scilistahtml_items):
+    errors = file_read(ERROR_FILE)
+    subject = 'OK'
+    next_action = 'Executar processar.sh'
+    if len(errors) > 0:
+        subject = 'Erros encontrados'
+        next_action = 'Fazer correcoes'
+
+    scilistas = scilista_info(scilistaxml_items)
+    scilistas += scilista_info(scilistahtml_items)
+
+    # v1.0 scilistatest.sh [43-129]
+    create_msg_file(SCILISTA_DATETIME, PROC_DATETIME, errors, scilistas)
+    send_mail(CONFIG.get('MAIL_TO'), CONFIG.get('MAIL_BCC'),
+              CONFIG.get('MAIL_CC'), subject, SCILISTA_DATETIME)
+
+    return next_action
+
+
 logger.info('XMLPREPROC: INICIO')
 logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
 logger.info('dir local: %s' % os.getcwd())
@@ -585,7 +608,7 @@ file_write(ERROR_FILE)
 file_write(LOG_FILE)
 if not os.path.isfile(SCILISTA):
     file_write(SCILISTA)
-for f in [MSG_OK_FILE, MSG_ERROR_FILE]:
+for f in [EMAIL_MSG_FILE]:
     file_delete(f)
 
 
