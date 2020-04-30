@@ -525,42 +525,38 @@ def list_diff(lista_maior, lista_menor):
 
 
 def check_scilista_xml():
-    if os.path.exists(SCILISTA_XML):
+    scilistaxml_items = file_readlines(SCILISTA_XML)
+    if not scilistaxml_items:
+        return logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
 
-        scilista_items = file_readlines(SCILISTA)
+    scilista_items = file_readlines(SCILISTA)
 
-        SCILISTA_DATETIME = datetime.fromtimestamp(
-                    os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
+    SCILISTA_DATETIME = datetime.fromtimestamp(
+                os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
 
-        # v1.0 scilistatest.sh [6]
-        os_system('dos2unix {}'.format(SCILISTA_XML))
+    # v1.0 scilistatest.sh [6]
+    os_system('dos2unix {}'.format(SCILISTA_XML))
 
-        scilistaxml_items = file_readlines(SCILISTA_XML)
-        q_scilistaxml_items = len(scilistaxml_items)
+    logger.info('XMLPREPROC: SCILISTA')
+    logger.info(SCILISTA_DATETIME)
 
-        logger.info('XMLPREPROC: SCILISTA')
-        logger.info(SCILISTA_DATETIME)
+    get_more_recent_title_issue_databases()
 
-        get_more_recent_title_issue_databases()
-
-        registered_issues = get_registered_issues()
-        if registered_issues:
-            # v1.0 scilistatest.sh
-            valid_scilista_items = check_scilista(
-                scilistaxml_items, registered_issues)
-            # v1.0 coletaxml.sh
-            if len(valid_scilista_items) == len(scilista_items):
-                expected = coletar_items(valid_scilista_items)
-                if check_coletados(expected):
-                    scilista_items = join_scilistas_and_update_scilista_file(
-                        scilistaxml_items, scilista_items)
-        else:
-            logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
-
+    registered_issues = get_registered_issues()
+    if registered_issues:
+        # v1.0 scilistatest.sh
+        valid_scilista_items = check_scilista(
+            scilistaxml_items, registered_issues)
+        # v1.0 coletaxml.sh
+        if len(valid_scilista_items) == len(scilista_items):
+            expected = coletar_items(valid_scilista_items)
+            if check_coletados(expected):
+                scilista_items = join_scilistas_and_update_scilista_file(
+                    scilistaxml_items, scilista_items)
     else:
-        logger.error('Not found: %s ' % SCILISTA_XML)
+        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
 
-        
+
 logger.info('XMLPREPROC: INICIO')
 logger.info('%s %s' % (CONFIG.get('COLLECTION'), PROC_DATETIME))
 logger.info('dir local: %s' % os.getcwd())
