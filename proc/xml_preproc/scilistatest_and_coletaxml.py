@@ -1,12 +1,12 @@
 #!/usr/bin/env python2.7
 # coding: utf-8
 import os
-import ConfigParser
+import configparser
 from datetime import datetime
 import logging
 from copy import deepcopy
 
-from .fs_commands import (
+from fs_commands import (
     fileinfo,
     file_read,
     file_readlines,
@@ -40,7 +40,7 @@ class Config:
 
     def load(self):
         try:
-            self.config = ConfigParser.ConfigParser()
+            self.config = configparser.ConfigParser()
             with open(self.file_path) as fp:
                 self.config.readfp(fp)
         except OSError as e:
@@ -172,10 +172,10 @@ def check_scilista_items_are_registered(scilista_items, registered_issues):
                 logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
         else:
             logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
-    return registered_items
+    return list(set(registered_items))
 
 
-def is_proc_serial_updated(items):
+def items_to_retry_updating(items):
     try_again = []
     logger.info('COLETA XML: Verificar se coleta foi bem sucedida')
     for item in items:
@@ -187,11 +187,24 @@ def is_proc_serial_updated(items):
     return try_again
 
 
+def find_conflicting_items(scilistaxml_items):
+    dellist = [i for i in scilistaxml_items if i.endswith("del")]
+    conflicts = []
+    for i in dellist:
+        if i[:-4] in scilistaxml_items:
+            conflicts.append((i[:-4], i))
+            logger.error((
+                "Encontrados '%s' e '%s' na scilistaxml. "
+                "Mantenha '%s' se deve ser atualizado. "
+                "Mantenha '%s' se deve ser apagado."
+                ) % (i[:-4], i, i[:-4], i))
+    return conflicts
+
+
 def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
     # Garante que title e issue na pasta de processamento estao atualizadas
-    xmlserial.get_most_recent_title_issue_databases()
-
-    # obtem lista de issues registrados
+    logger.info('Deixa as bases title e issue atualizadas em proc')
+    xmlserial.make_title_and_issue_updated()
     registered_issues = get_registered_issues()
     if not registered_issues:
         logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
@@ -200,6 +213,12 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
     if not scilistaxml_items:
         logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
         return
+
+    # remove del item, which if it is also to be add
+    conflicts = find_conflicting_items(scilistaxml_items)
+    if conflicts:
+        logger.error(('%s contem itens conflitantes. '
+                      'Verificar e enviar novamente.' % SCILISTA_XML))
 
     # verificar se ha repeticao
     sorted_items, repeated = get_sorted_list_and_repeated_items(
@@ -210,17 +229,21 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
 
     registered_items = check_scilista_items_are_registered(
         sorted_items, registered_issues)
+    logger.info('SCILISTA TESTE %i itens' % len(registered_items))
 
-    valid_scilista_items = xmlserial.check_scilista_items_db(registered_items)
+    db_items = xmlserial.check_scilista_items_db(
+        registered_items, logger)
 
-    if not repeated and len(valid_scilista_items) == len(scilistaxml_items):
+    if repeated or conflicts or len(db_items) < len(scilistaxml_items):
+        return False
+    else:
         # estando scilista completamente valida,
         # entao coleta os dados dos issues
-        xmlserial.update_proc_serial(valid_scilista_items)
+        xmlserial.update_proc_serial(db_items, logger)
         # verifica se as bases dos artigos estao presentes na area de proc
-        items = deepcopy(valid_scilista_items)
+        items = deepcopy(db_items)
         for i in range(0, 3):
-            items = is_proc_serial_updated(items)
+            items = items_to_retry_updating(items)
             if len(items) == 0:
                 break
             # tenta atualizar aquilo que não pode ser atualizado
@@ -369,7 +392,8 @@ if __name__ == "__main__":
     try:
         CONFIG.load()
         CONFIG.check()
-    except (OSError, ValueError, ConfigParser.MissingSectionHeaderError) as e:
+    except (OSError, ValueError,
+            configparser.ConfigParser.MissingSectionHeaderError) as e:
         exit(e)
 
     logger.info('%s %s' % (CONFIG.get('COLLECTION'), start_datetime))
@@ -381,7 +405,7 @@ if __name__ == "__main__":
     xml_scilista_items = file_readlines(SCILISTA_XML)
     htm_scilista_items = file_readlines(SCILISTA)
 
-    xmlserial = XMLSerial(CONFIG)
+    xmlserial = XMLSerial(CONFIG, logger, PROC_SERIAL_LOCATION)
     if check_scilista_xml_and_coleta_xml(xml_scilista_items, xmlserial):
         # atualiza a scilista na area de processamento
         join_scilistas_and_update_scilista_file(

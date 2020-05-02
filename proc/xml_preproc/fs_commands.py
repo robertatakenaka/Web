@@ -64,65 +64,81 @@ def file_readlines(filename):
         return c
 
 
-class Remote(object):
-    def __init__(self, server, user):
-        self.server = server
-        self.user = user
-        self.port = None
-        if ':' in server:
-            self.server, self.port = server.split(':')
+class LocalCommands(object):
+    def __init__(self):
+        pass
 
-    def path(self, _path):
-        return "{}@{}:{}".format(self.user, self.server, _path)
-
-    def exists(self, path):
-        # 'ssh <USER>@<SERVER><PORT> "ls <PATH>"'
-        return os.system('ssh {}@{}{} "ls {}"'.format(
-            self.user, self.server, self.ssh_port_param, path)) == 0
-
-    @property
-    def rsync_port_param(self):
-        return ' -e "ssh -p {}" '.format(self.port) if self.port else ''
-
-    @property
-    def scp_port_param(self):
-        return ' -P {} '.format(self.port) if self.port else ''
-
-    @property
-    def ssh_port_param(self):
-        return ' -p {} '.format(self.port) if self.port else ''
-
-    @property
-    def mkdirs(self, path):
-        # 'ssh <USER>@<SERVER><PORT> "mkdir -p <PATH>"'
-        return 'ssh {}@{}{} "mkdir -p {}"'.format(
-            self.user, self.server, self.ssh_port_param, path)
-
-    @property
-    def copy(self, src, dest):
-        return "scp {} -r {} {}".format(self.scp_port_param, src, dest)
-
-
-class FSCommands(object):
-
-    def __init__(self, remote=None):
-        self.remote = remote
-
-    def path(self, _path):
-        if self.remote:
-            return self.remote.path(_path)
+    def _path(self, _path):
         return _path
 
     def exists(self, path):
-        if self.remote:
-            return self.remote.exists(path)
         return os.path.exists(path)
 
-    @property
-    def rsync_port_param(self):
-        return self.remote.rsync_port_param if self.remote else ''
+    def mkdirs(self, path):
+        return os.makedirs(path)
 
-    def rsync(self, src, dest, options="-auvp"):
+    def cp(self, src, dest):
+        return "cp -r {} {}".format(src, dest)
+
+    def rsync(self, src, dest, options="-apu"):
+        """
+        -C, --cvs-exclude
+            auto-ignore files in the same way CVS does
+        -r, --recursive
+            recurse into directories
+        -v, --verbose
+            increase verbosity
+        -p, --perms
+            preserve permissions
+        -a, --archive
+            archive mode; equals -rlptgoD (no -H,-A,-X)
+        -u, --update
+            skip files that are newer on the receiver
+        """
+        return 'rsync {} {} {}'.format(options, src, dest)
+
+
+class RemoteCommands(object):
+    def __init__(self, server=None, user=None):
+        self._server = server
+        self._user = user
+        self._port = None
+        if server and ':' in server:
+            self._server, self._port = server.split(':')
+
+    @property
+    def _rsync_port_param(self):
+        return ' -e "ssh -p {}" '.format(self._port) if self._port else ''
+
+    @property
+    def _scp_port_param(self):
+        return ' -P {} '.format(self._port) if self._port else ''
+
+    @property
+    def _ssh_port_param(self):
+        return ' -p {} '.format(self._port) if self._port else ''
+
+    @property
+    def user_at(self):
+        return "{}@".format(self._user) if self._user else ''
+
+    def _path(self, _path):
+        return "{}{}:{}".format(self.user_at, self._server, _path)
+
+    def exists(self, path):
+        return os.system('ssh {}{}{} "ls {}"'.format(
+            self.user_at, self._server, self._ssh_port_param, path)) == 0
+
+    def mkdirs(self, path):
+        # 'ssh <USER>@<SERVER><PORT> "mkdir -p <PATH>"'
+        return 'ssh {}{}{} "mkdir -p {}"'.format(
+            self.user_at, self._server, self._ssh_port_param, path)
+
+    def cp(self, src, dest):
+        return "scp {} -r {} {}".format(
+            self._scp_port_param, self._path(src), dest)
+
+    def rsync(self, src, dest, options="-apu"):
         """
         -C, --cvs-exclude
             auto-ignore files in the same way CVS does
@@ -138,11 +154,10 @@ class FSCommands(object):
             skip files that are newer on the receiver
         """
         return 'rsync {} {} {} {}'.format(
-            self.rsync_port_param, options, src, dest)
+            self._rsync_port_param, options, self._path(src), dest)
 
-    @property
-    def cp(self, src, dest):
-        if self.remote:
-            self.remote.cp(src, dest)
-        else:
-            return "cp {} -r {} {}".format(self.scp_port_param, src, dest)
+
+def FSCommands(server=None, user=None):
+    if server:
+        return RemoteCommands(server, user)
+    return LocalCommands()
