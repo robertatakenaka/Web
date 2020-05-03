@@ -1,13 +1,19 @@
 #!/usr/bin/env python2.7
 # coding: utf-8
 import os
-import fs_commands
-from fs_commands import (
+import logging
+import logging.config
+
+from xml_preproc import fs_commands
+from xml_preproc.fs_commands import (
     fileinfo,
     file_delete,
     file_readlines,
     os_system,
 )
+
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger(__name__)
 
 
 def get_sorted_list_and_repeated_items(list_items, sorted_function=sorted):
@@ -105,10 +111,11 @@ class XMLSerial(object):
     def __init__(self, config, proc_serial):
         self.cfg = config
         self.fs = fs_commands.FSCommands(
-            self.cfg.get('server'), self.cfg.get('user'))
+            self.cfg.get('XML_SERIAL_LOCATION_SERVER'),
+            self.cfg.get('XML_SERIAL_LOCATION_USER'))
         self._serial_path = self.cfg.get("XML_SERIAL_LOCATION")
         self.proc_serial = proc_serial
-        self.TMP_LOCATION = self.cfg.get("TMP_LOCATION", "/tmp")
+        self.TMP_LOCATION = self.cfg.get("TMP_LOCATION") or "/tmp"
 
     @property
     def serial_path(self):
@@ -138,20 +145,22 @@ class XMLSerial(object):
             - from XML serial
         if from XML, copy the databases to serial folder
         """
-        for folder in ['title', 'issue']:
+        for folder in ['issue', 'title']:
             self.synchronize(folder, self.proc_serial)
 
-    def check_scilista_items_db(self, registered_items, logger):
+    def check_scilista_items_db(self, registered_items):
         # v1.0 scilistatest.sh [41] (checkissue.py)
         valid_issue_db = []
-        for acron, issueid in set(registered_items):
+        errors = []
+        for acron, issueid in registered_items:
             db_status = self._check_db_status(acron, issueid)
             error_msg = db_status.get("error_msg")
             if error_msg:
                 logger.error(error_msg)
+                errors.append(error_msg)
             else:
                 valid_issue_db.append(db_status)
-        return valid_issue_db
+        return valid_issue_db, errors
 
     def _get_aop_xml_db_filepath(self, xml_db_filepath, acron, issueid):
         if ":" in xml_db_filepath:
@@ -174,7 +183,7 @@ class XMLSerial(object):
         xml_db_filepath = db_filename(self.serial_path, acron, issueid)
         xml_mst_filename = xml_db_filepath + '.mst'
         if not self.exists(xml_mst_filename):
-            return {"error_msg": 'Not found {}'.format(xml_mst_filename)}
+            return {"error_msg": '{} nao encontrada'.format(xml_mst_filename)}
 
         proc_db_filepath = db_filename(self.proc_serial, acron, issueid)
         proc_mst_filename = proc_db_filepath + '.mst'

@@ -2,7 +2,7 @@ from unittest import (
     TestCase,
 )
 
-from fs_commands import (
+from xml_preproc.fs_commands import (
     RemoteCommands,
 )
 

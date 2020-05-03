@@ -6,7 +6,7 @@ from unittest import (
 )
 from unittest.mock import patch, call
 
-import xml_serial
+from xml_preproc import xml_serial
 
 
 class TestXMLSerialFunctions(TestCase):
@@ -52,7 +52,7 @@ class TestAOPChecker(TestCase):
              "mx xml/acron/ahead from=2 append=proc/acron/ahead -all now"}
         )
 
-    @patch("xml_serial.get_documents")
+    @patch("xml_preproc.xml_serial.get_documents")
     def test_check_db_status_returns_error(self, mock_get_docs):
         mock_get_docs.return_value = ["c", "b", "a", "b", ]
         result = self.aop_checker.check_db_status()
@@ -121,7 +121,7 @@ class TestXMLSerial(TestCase):
                 c = fp.read()
                 self.assertEqual(c, "DEST")
 
-    @patch("xml_serial.XMLSerial.exists")
+    @patch("xml_preproc.xml_serial.XMLSerial.exists")
     def test__check_db_status_returns_error_not_found(self, mock_exists):
         mock_exists.return_value = False
         result = self.xmlserial._check_db_status("acron", "volnum")
@@ -130,7 +130,7 @@ class TestXMLSerial(TestCase):
             {"error_msg":
              'Not found fixtures/xmlserial/acron/volnum/base/volnum.mst'})
 
-    @patch("xml_serial.XMLSerial.exists")
+    @patch("xml_preproc.xml_serial.XMLSerial.exists")
     def test__check_db_status_returns_items_to_copy(self, mock_exists):
         mock_exists.return_value = True
         result = self.xmlserial._check_db_status("acron", "volnum")
@@ -145,7 +145,7 @@ class TestXMLSerial(TestCase):
             }
         )
 
-    @patch("xml_serial.XMLSerial.exists")
+    @patch("xml_preproc.xml_serial.XMLSerial.exists")
     def test__check_db_status_returns_items_to_copy_for_aop(self, mock_exists):
         mock_exists.return_value = True
         result = self.xmlserial._check_db_status("acron", "2019nahead")
@@ -160,7 +160,7 @@ class TestXMLSerial(TestCase):
             }
         )
 
-    @patch("xml_serial.XMLSerial.synchronize")
+    @patch("xml_preproc.xml_serial.XMLSerial.synchronize")
     def test__copy_to_proc_serial_calls_synchronize(self, mock_synchronize):
         self.xmlserial._copy_to_proc_serial(
             'fixtures/xmlserial/acron/volnum/base/volnum',
@@ -177,7 +177,7 @@ class TestXMLSerial(TestCase):
             ]
         )
 
-    @patch("xml_serial.os_system")
+    @patch("xml_preproc.xml_serial.os_system")
     def test_update_proc_serial_calls_os_system(self, mock_os_system):
         data = [
             {"mx_append":
@@ -186,3 +186,32 @@ class TestXMLSerial(TestCase):
         self.xmlserial.update_proc_serial(data, logging)
         mock_os_system.assert_called_once_with(
             "mx xml/acron/ahead from=2 append=proc/acron/ahead -all now")
+
+    @patch("xml_preproc.xml_serial.XMLSerial.exists")
+    def test_check_scilista_items_db(self, mock_exists):
+        mock_exists.return_value = True
+        registered_issues = [
+            ('acron', 'n1'),
+            ('acron2', 'n2'),
+        ]
+        expected = [{
+            "files_info": [
+                ("fixtures/proc/acron/n1/base/n1.mst", (0, 0)),
+                ("fixtures/proc/acron/n1/base/n1.xrf", (0, 0)),
+            ],
+            "items_to_copy":
+                ("fixtures/xmlserial/acron/n1/base/n1",
+                    "fixtures/proc/acron/n1/base/n1"),
+            },
+            {
+            "files_info": [
+                ("fixtures/proc/acron2/n2/base/n2.mst", (0, 0)),
+                ("fixtures/proc/acron2/n2/base/n2.xrf", (0, 0)),
+            ],
+            "items_to_copy":
+                ("fixtures/xmlserial/acron2/n2/base/n2",
+                    "fixtures/proc/acron2/n2/base/n2"),
+            },
+        ]
+        result = self.xmlserial.check_scilista_items_db(registered_issues)
+        self.assertEqual(result, expected)

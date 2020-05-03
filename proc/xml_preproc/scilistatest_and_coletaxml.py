@@ -1,23 +1,32 @@
 #!/usr/bin/env python2.7
 # coding: utf-8
 import os
-import configparser
-from datetime import datetime
+import time
+import shutil
 import logging
+import logging.config
+
+from datetime import datetime
 from copy import deepcopy
 
-from fs_commands import (
+from xml_preproc.config import Config
+from xml_preproc.fs_commands import (
     fileinfo,
     file_read,
     file_readlines,
     file_write,
+    file_delete,
     os_system,
 )
-from xml_serial import (
+from xml_preproc.xml_serial import (
     XMLSerial,
     mx_pft,
     get_sorted_list_and_repeated_items,
 )
+
+
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger(__name__)
 
 
 REGISTERED_ISSUES_PFT = "v930,' ',if v32='ahead' then v65*0.4, fi,|v|v31,|s|v131,|n|v32,|s|v132,v41/"
@@ -27,79 +36,6 @@ PROC_SERIAL_LOCATION = '../serial'
 SCILISTA_XML = '{}/scilistaxml.lst'.format(PROC_SERIAL_LOCATION)
 SCILISTA = '{}/scilista.lst'.format(PROC_SERIAL_LOCATION)
 PROCISSUEDB = '{}/issue/issue'.format(PROC_SERIAL_LOCATION)
-
-
-logger = logging.getLogger(__name__)
-
-
-class Config:
-
-    def __init__(self, collection_dirname):
-        self.config = None
-        self.collection_dirname = collection_dirname
-
-    def load(self):
-        try:
-            self.config = configparser.ConfigParser()
-            with open(self.file_path) as fp:
-                self.config.readfp(fp)
-        except OSError as e:
-            print(("Falta arquivo de configuração: {}. "
-                   "Consulte o modelo: {}").format(
-                    self.file_path, 'xmlpreproc_config.ini.template'
-                ))
-            raise e
-        except ConfigParser.MissingSectionHeaderError as e:
-            raise e
-
-    @property
-    def file_path(self):
-        return 'xmlpreproc_config_{}.ini'.format(self.collection_dirname)
-
-    def get(self, name):
-        return self.config.get("[SECTION]", name)
-
-    def check(self):
-        serial_path = "/{}/serial".format(self.collection_dirname)
-        issue_path = os.path.join(self.get('XML_SERIAL_LOCATION'), 'issue')
-
-        errors = []
-        if serial_path not in self.get('XML_SERIAL_LOCATION'):
-            errors.append(
-                'Esperada a pasta "{}" em "{}"'.format(
-                    serial_path, self.get('XML_SERIAL_LOCATION')))
-
-        if not os.path.isdir(issue_path):
-            errors.append(
-                'Esperada a pasta "issue" em "{}"'.format(
-                    self.get('XML_SERIAL_LOCATION')))
-        if errors:
-            raise(ValueError("\n".join(errors)))
-
-
-def config_loggers():
-    file_write(LOG_FILE)
-    file_write(ERROR_FILE)
-    logger.setLevel(logging.DEBUG)
-    # create file handler which logs even debug messages
-    fh = logging.FileHandler(LOG_FILE)
-    fh.setLevel(logging.DEBUG)
-    # create file handler which logs even debug messages
-    fh_errors = logging.FileHandler(ERROR_FILE)
-    fh_errors.setLevel(logging.ERROR)
-    # create console handler with a higher log level
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    # create formatter and add it to the handlers
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
-    fh_errors.setFormatter()
-    # add the handlers to logger
-    logger.addHandler(ch)
-    logger.addHandler(fh)
-    logger.addHandler(fh_errors)
 
 
 def get_registered_issues():
@@ -167,12 +103,13 @@ def check_scilista_items_are_registered(scilista_items, registered_issues):
             issue = '{} {}'.format(acron, issueid)
             # v1.0 scilistatest.sh [41] (checkissue.py)
             if issue in registered_issues:
-                registered_items.append((acron, issueid))
+                if (acron, issueid) not in registered_items:
+                    registered_items.append((acron, issueid))
             else:
                 logger.error('Linha %i: "%s" nao esta registrado' % (n, issue))
         else:
             logger.error('Linha %i: "%s" tem formato invalido' % (n, item))
-    return list(set(registered_items))
+    return registered_items
 
 
 def items_to_retry_updating(items):
@@ -195,8 +132,8 @@ def find_conflicting_items(scilistaxml_items):
             conflicts.append((i[:-4], i))
             logger.error((
                 "Encontrados '%s' e '%s' na scilistaxml. "
-                "Mantenha '%s' se deve ser atualizado. "
-                "Mantenha '%s' se deve ser apagado."
+                "Mantenha '%s' para atualizar. "
+                "Mantenha '%s' para nao ser publicado."
                 ) % (i[:-4], i, i[:-4], i))
     return conflicts
 
@@ -205,34 +142,44 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
     # Garante que title e issue na pasta de processamento estao atualizadas
     logger.info('Deixa as bases title e issue atualizadas em proc')
     xmlserial.make_title_and_issue_updated()
-    registered_issues = get_registered_issues()
-    if not registered_issues:
-        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
-        return
 
+    # Verifica se a scilistaxml esta vazia
     if not scilistaxml_items:
         logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
+        print('%s vazia ou nao encontrada' % SCILISTA_XML)
         return
 
-    # remove del item, which if it is also to be add
+    logger.info(
+        '%s: %i itens na lista' % (SCILISTA_XML, len(scilistaxml_items)))
+
+    # Remove os itens del se tambem ha os mesmos itens para adicionar
     conflicts = find_conflicting_items(scilistaxml_items)
     if conflicts:
         logger.error(('%s contem itens conflitantes. '
                       'Verificar e enviar novamente.' % SCILISTA_XML))
 
-    # verificar se ha repeticao
+    # Verificar se ha repeticao
     sorted_items, repeated = get_sorted_list_and_repeated_items(
         scilistaxml_items)
     if repeated:
         logger.error(('%s contem itens repetidos. '
                       'Verificar e enviar novamente.' % SCILISTA_XML))
 
+    # Retorna uma lista de issues registrados
+    registered_issues = get_registered_issues()
+    if not registered_issues:
+        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+        return
+
+    # Verificar se os itens da scilistaxml sao issues registrados
     registered_items = check_scilista_items_are_registered(
         sorted_items, registered_issues)
-    logger.info('SCILISTA TESTE %i itens' % len(registered_items))
+    logger.info(
+        '%s: %i itens registrados' % (SCILISTA_XML, len(registered_items)))
 
-    db_items = xmlserial.check_scilista_items_db(
-        registered_items, logger)
+    db_items, errors = xmlserial.check_scilista_items_db(registered_items)
+    for err in errors:
+        logger.error(err)
 
     if repeated or conflicts or len(db_items) < len(scilistaxml_items):
         return False
@@ -252,37 +199,37 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
             logger.error("Coleta incompleta")
             for item in items:
                 for f in item["files_info"]:
-                    logger.error('%s nao atualizado' % f)
+                    logger.error('Nao coletado: %s' % f[0])
         return True
 
 
 def scilista_info(name, scilista_items):
     rows = []
-    name = "{} ({} itens)".format(name, len(scilista_items))
-    _sorted, repeated = get_sorted_list_and_repeated_items(
-        scilista_items, sort_scilista)
+    _sorted = sorted(scilista_items)
+    name1 = "{} original ({} itens)".format(name, len(scilista_items))
+    name2 = "{} ordenada ({} itens)".format(name, len(_sorted))
 
-    rows.append(name)
-    rows.append('='*len(name))
-    rows.append('')
-    rows.extend(_sorted)
-    rows.append("")
-    if repeated:
-        rows.append("Repetidos")
-        rows.extend(["{} ({}}x)".format(item, qtd) for item, qtd in repeated])
-        rows.append("")
+    rows.append(_scilista_info(name1, scilista_items))
+    rows.append(_scilista_info(name2, _sorted))
+
     return "\n".join(rows)
 
 
-def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, email_msg_file):
-    if CONFIG.get('TEST') is True:
-        mailto = CONFIG.get('MAIL_TO_TEST')
-        mailcc = CONFIG.get('MAIL_TO_TEST')
-        mailbcc = CONFIG.get('MAIL_TO_TEST')
+def _scilista_info(name, scilista_items):
+    rows = []
+    rows.append("")
+    rows.append(name)
+    rows.append('='*len(name))
+    rows.append("")
+    rows.extend(scilista_items)
+    rows.append("")
+    return "\n".join(rows)
 
+
+def send_mail(collection, mailto, mailbcc, mailcc, subject, scilista_date, email_msg_file):
     _mailbcc = '-b "{}"'.format(mailbcc) if mailbcc else ''
     _subject = '[XML PREPROC][{}][{}] {}'.format(
-            CONFIG.get('COLLECTION'),
+            collection,
             scilista_date[:10],
             subject
         )
@@ -297,25 +244,30 @@ def send_mail(mailto, mailbcc, mailcc, subject, scilista_date, email_msg_file):
 
 
 def create_msg_instructions(errors):
-    instructions = "Nenhum erro encontrado. Processamento sera iniciado em breve."
-    fim = '[pok]'
     if errors:
         fim = ''
-        instructions = """
-Foram encontrados erros no procedimento de coleta de XML.
-Veja abaixo.
-Caso o erro seja na scilistaxml ou fasciculo nao registrado,
-faca as correcoes e solicite o processamento novamente.
-Caso contrario, aguarde instrucoes.
+        instructions = (
+            "Foram encontrados erros no procedimento de coleta de XML. "
+            "Veja abaixo. \n"
+            "Caso o erro seja na scilistaxml ou fasciculo nao registrado, "
+            "faca as correcoes e solicite o processamento novamente. \n"
+            "Caso contrario, aguarde instrucoes. \n"
+            "\n"
+            "Erros\n"
+            "-----\n"
+            "{}\n"
+            ).format(errors)
+    else:
+        instructions = (
+            "Nenhum erro encontrado. "
+            "Processamento sera iniciado em breve.")
+        fim = '[pok]'
 
-Erros
------
-{}
-    """.format(errors)
     return instructions, fim
 
 
-def get_email_message(scilista_date, proc_date, instructions, numbers, fim):
+def get_email_message(
+        collection, scilista_date, proc_date, instructions, numbers, fim):
     return """
     ATENCAO: Mensagem automatica. Nao responder a este e-mail.
 
@@ -333,7 +285,7 @@ Inicio da verificacao: {}
 ----
 {}
     """.format(
-        CONFIG.get('COLLECTION'),
+        collection,
         scilista_date,
         proc_date,
         instructions,
@@ -342,36 +294,39 @@ Inicio da verificacao: {}
         )
 
 
-def create_msg_file(scilista_date, proc_date, errors, scilistas):
+def create_msg_file(collection, scilista_date, proc_date, errors, scilistas):
     email_msg_file = 'xmlpreproc_outs_msg_email.txt'
     file_write(email_msg_file)
     errors = errors or ''
     instructions, fim = create_msg_instructions(errors)
     msg = get_email_message(
-        scilista_date, proc_date, instructions, scilistas, fim)
+        collection, scilista_date, proc_date, instructions, scilistas, fim)
     file_write(email_msg_file, msg)
     logger.info(msg)
     return email_msg_file
 
 
-def report(SCILISTA_DATETIME, PROC_DATETIME,
-           scilistaxml_items, scilistahtml_items):
+def report(scilista_datetime, proc_datetime,
+           scilistaxml_items, scilistahtml_items, config):
     errors = file_read(ERROR_FILE)
-    subject = 'OK'
-    next_action = 'Executar processar.sh'
     if errors:
         subject = 'Erros encontrados'
         next_action = 'Fazer correcoes'
+    else:
+        subject = 'OK'
+        next_action = 'Executar processar.sh'
 
-    scilistas = scilista_info(scilistaxml_items)
-    scilistas += scilista_info(scilistahtml_items)
+    scilistas = scilista_info("scilista XML", scilistaxml_items)
+    scilistas += scilista_info("scilista HTML", scilistahtml_items)
 
     # v1.0 scilistatest.sh [43-129]
     email_msg_file = create_msg_file(
-        SCILISTA_DATETIME, PROC_DATETIME, errors, scilistas)
-    send_mail(CONFIG.get('MAIL_TO'), CONFIG.get('MAIL_BCC'),
-              CONFIG.get('MAIL_CC'), subject, SCILISTA_DATETIME,
-              email_msg_file)
+        config.get('COLLECTION'), scilista_datetime, proc_datetime, errors,
+        scilistas)
+    send_mail(
+        config.get('COLLECTION'), config.get('MAIL_TO'),
+        config.get('MAIL_BCC'), config.get('MAIL_CC'), subject,
+        scilista_datetime or '', email_msg_file)
 
     return next_action
 
@@ -383,38 +338,46 @@ def collection_dirname():
     return folders[2]
 
 
-if __name__ == "__main__":
-    config_loggers()
+def config_filepath():
+    return 'xmlpreproc_config_{}.ini'.format(collection_dirname())
+
+
+def main():
+    file_write(ERROR_FILE)
     start_datetime = datetime.now().isoformat().replace('T', ' ')[:-7]
     logger.info('XMLPREPROC: INICIO %s' % start_datetime)
 
-    CONFIG = Config(collection_dirname())
-    try:
-        CONFIG.load()
-        CONFIG.check()
-    except (OSError, ValueError,
-            configparser.ConfigParser.MissingSectionHeaderError) as e:
-        exit(e)
+    CONFIG = Config(config_filepath())
+    errors = CONFIG.check()
+    if errors:
+        exit(errors)
 
     logger.info('%s %s' % (CONFIG.get('COLLECTION'), start_datetime))
     logger.info('dir local: %s' % os.getcwd())
 
-    xml_scilista_datetime = datetime.fromtimestamp(
-                os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
-    os_system('dos2unix {}'.format(SCILISTA_XML))
-    xml_scilista_items = file_readlines(SCILISTA_XML)
+    xml_scilista_datetime = None
+    xml_scilista_items = []
     htm_scilista_items = file_readlines(SCILISTA)
 
-    xmlserial = XMLSerial(CONFIG, logger, PROC_SERIAL_LOCATION)
+    if os.path.isfile(SCILISTA_XML):
+        xml_scilista_datetime = datetime.fromtimestamp(
+            os.path.getmtime(SCILISTA_XML)).isoformat().replace('T', ' ')
+        os_system('dos2unix {}'.format(SCILISTA_XML))
+
+    xml_scilista_items = file_readlines(SCILISTA_XML)
+    xmlserial = XMLSerial(CONFIG, PROC_SERIAL_LOCATION)
     if check_scilista_xml_and_coleta_xml(xml_scilista_items, xmlserial):
         # atualiza a scilista na area de processamento
         join_scilistas_and_update_scilista_file(
             xml_scilista_items, htm_scilista_items)
 
     next_action = report(xml_scilista_datetime, start_datetime,
-                         xml_scilista_items, htm_scilista_items)
+                         xml_scilista_items, htm_scilista_items, CONFIG)
 
     # v1.0 coletaxml.sh [21-25]
-    logger.info("Proximo passo:")
-    logger.info(next_action)
-    exit(next_action)
+    print("Proximo passo:")
+    print(next_action)
+    file_write(ERROR_FILE)
+
+if __name__ == "__main__":
+    main()
