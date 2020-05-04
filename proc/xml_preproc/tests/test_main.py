@@ -2,7 +2,9 @@ import os
 from unittest import (
     TestCase,
 )
-from unittest.mock import patch, call, Mock
+from unittest.mock import patch, call, Mock, MagicMock
+
+from xml_preproc.fs_commands import file_read, file_readlines
 
 from scilistatest_and_coletaxml import (
     sort_scilista,
@@ -13,10 +15,19 @@ from scilistatest_and_coletaxml import (
     main,
     ERROR_FILE,
     SciListaXML,
+    XMLSerial,
+    Config,
+    Report,
 )
 
 
 class TestSciListaXML(TestCase):
+
+    def setUp(self):
+        config = {
+            "XML_SERIAL_LOCATION": "fixtures/xmlserial",
+        }
+        self.xmlserial = XMLSerial(config, "fixtures/proc")
 
     @patch("scilistatest_and_coletaxml.logger.error")
     def test_find_conflicting_items(self, mock_logger):
@@ -29,17 +40,177 @@ class TestSciListaXML(TestCase):
         mock_logger.assert_called_once_with((
             "Encontrados "
             "'abc 2009naheadpr' e 'abc 2009naheadpr del' na scilistaxml. "
+            "Mantenha apenas um. "
             "Mantenha 'abc 2009naheadpr' para atualizar. "
             "Mantenha 'abc 2009naheadpr del' para nao ser publicado."
             )
         )
 
+    @patch("scilistatest_and_coletaxml.XMLSerial.update_proc_serial")
+    @patch("scilistatest_and_coletaxml.fileinfo")
+    def test_get_db_items_gets_db_files_in_one_try(
+            self,
+            mock_fileinfo,
+            mock_update
+            ):
+        mock_fileinfo.side_effect = [
+            (1, 1),
+            (2, 2),
+        ]
+        content = ["abc v1n1"]
+        lista = SciListaXML(content, self.xmlserial)
+        items = [
+            {"files_info": [
+                    ['fixtures/proc/abc/v1n1/base/v1n1.mst', (0, 0)],
+                    ['fixtures/proc/abc/v1n1/base/v1n1.xrf', (0, 0)],
+                ]
+             }
+        ]
+        self.assertTrue(lista._get_db_items(items))
 
-class TestMainBase(TestCase):
-    pass
+    @patch("scilistatest_and_coletaxml.XMLSerial.update_proc_serial")
+    @patch("scilistatest_and_coletaxml.fileinfo")
+    def test_get_db_items_retries_once(
+            self,
+            mock_fileinfo,
+            mock_update
+            ):
+        mock_fileinfo.side_effect = [
+            (0, 0),
+            (2, 2),
+            (1, 0),
+            (2, 2),
+        ]
+
+        content = ["abc v1n1"]
+        lista = SciListaXML(content, self.xmlserial)
+        items = [
+            {"files_info": [
+                    ['fixtures/proc/abc/v1n1/base/v1n1.mst', (0, 0)],
+                    ['fixtures/proc/abc/v1n1/base/v1n1.xrf', (0, 0)],
+                ]
+             }
+        ]
+        expected = [
+            call(items),
+            call(items),
+        ]
+        self.assertTrue(lista._get_db_items(items))
+        self.assertEqual(
+            mock_update.call_args_list,
+            expected
+        )
+
+    @patch("scilistatest_and_coletaxml.XMLSerial.update_proc_serial")
+    @patch("scilistatest_and_coletaxml.fileinfo")
+    def test_get_db_items_execute_three_times_without_success(
+            self,
+            mock_fileinfo,
+            mock_update
+            ):
+        mock_fileinfo.side_effect = [
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+        ]
+
+        content = ["abc v1n1"]
+        lista = SciListaXML(content, self.xmlserial)
+        items = [
+            {"files_info": [
+                    ['fixtures/proc/abc/v1n1/base/v1n1.mst', (0, 0)],
+                    ['fixtures/proc/abc/v1n1/base/v1n1.xrf', (0, 0)],
+                ]
+             }
+        ]
+        expected = [
+            call(items),
+            call(items),
+            call(items),
+        ]
+        self.assertFalse(lista._get_db_items(items))
+        self.assertEqual(
+            mock_update.call_args_list,
+            expected
+        )
+
+    @patch("scilistatest_and_coletaxml.XMLSerial.update_proc_serial")
+    @patch("scilistatest_and_coletaxml.fileinfo")
+    def test_get_db_items_execute_three_times_without_success_although_one_of_files_was_updated(
+            self,
+            mock_fileinfo,
+            mock_update
+            ):
+        mock_fileinfo.side_effect = [
+            (0, 0),
+            (1, 0),
+            (0, 0),
+            (1, 0),
+            (0, 0),
+            (1, 0),
+        ]
+
+        content = ["abc v1n1"]
+        lista = SciListaXML(content, self.xmlserial)
+        items = [
+            {"files_info": [
+                    ['fixtures/proc/abc/v1n1/base/v1n1.mst', (0, 0)],
+                    ['fixtures/proc/abc/v1n1/base/v1n1.xrf', (0, 0)],
+                ]
+             }
+        ]
+        expected = [
+            call(items),
+            call(items),
+            call(items),
+        ]
+        self.assertFalse(lista._get_db_items(items))
+        self.assertEqual(
+            mock_update.call_args_list,
+            expected
+        )
+
+    @patch("scilistatest_and_coletaxml.XMLSerial.update_proc_serial")
+    @patch("scilistatest_and_coletaxml.fileinfo")
+    def test_get_db_items_retries_three_times_with_success(
+            self,
+            mock_fileinfo,
+            mock_update
+            ):
+        mock_fileinfo.side_effect = [
+            (0, 0),
+            (1, 0),
+            (0, 0),
+            (1, 0),
+            (1, 0),
+            (1, 0),
+        ]
+
+        content = ["abc v1n1"]
+        lista = SciListaXML(content, self.xmlserial)
+        items = [
+            {"files_info": [
+                    ['fixtures/proc/abc/v1n1/base/v1n1.mst', (0, 0)],
+                    ['fixtures/proc/abc/v1n1/base/v1n1.xrf', (0, 0)],
+                ]
+             }
+        ]
+        expected = [
+            call(items),
+            call(items),
+            call(items),
+        ]
+        self.assertTrue(lista._get_db_items(items))
+        self.assertEqual(
+            mock_update.call_args_list,
+            expected
+        )
 
 
-class TestMainFunctions(TestMainBase):
+class TestMainFunctions(TestCase):
 
     def test_sort_scilista(self):
         scilista = [
@@ -264,12 +435,12 @@ class TestMainFunctions(TestMainBase):
         self.assertEqual(result, "\n".join(expected))
 
 
-class TestMainMailx(TestMainBase):
+class TestMainMailx(TestCase):
 
     @patch("scilistatest_and_coletaxml.os_system")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
-    def test_os_system_called_with_errors(
+    def test_os_system_calls_mailx_errors_because_scilistaxml_is_not_found(
             self, mock_config_filepath, mock_update,
             mock_os_system):
         mock_config_filepath.return_value = (
@@ -282,31 +453,26 @@ class TestMainMailx(TestMainBase):
         mock_os_system.assert_called_once_with(cmd)
 
 
-class TestMainSendEmail(TestMainBase):
+class TestMainSendEmail(TestCase):
 
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
-    def test_send_email_with_errors_because_scilista_is_not_found(
+    def test_send_email_errors_because_scilista_is_not_found(
             self, mock_config_filepath, mock_update, mock_send_mail):
         mock_config_filepath.return_value = (
             'xml_preproc/xmlpreproc_config.ini.template')
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
 
     @patch("scilistatest_and_coletaxml.get_registered_issues")
     @patch("scilistatest_and_coletaxml.file_readlines")
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
-    def test_main_send_email_with_errors_because_no_issue_is_registered(
+    def test_main_send_email_errors_because_no_issue_is_registered(
             self,
             mock_config_filepath,
             mock_update,
@@ -322,20 +488,15 @@ class TestMainSendEmail(TestMainBase):
         mock_get_registered_issues.return_value = []
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
 
     @patch("scilistatest_and_coletaxml.get_registered_issues")
     @patch("scilistatest_and_coletaxml.file_readlines")
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
-    def test_main_send_email_with_errors_because_scilista_has_repeatition(
+    def test_main_send_email_errors_because_scilista_has_repeatition(
             self,
             mock_config_filepath,
             mock_update,
@@ -354,17 +515,12 @@ class TestMainSendEmail(TestMainBase):
         ]
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
 
     @patch("scilistatest_and_coletaxml.get_registered_issues")
     @patch("scilistatest_and_coletaxml.file_readlines")
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
     def test_main_send_email_with_errors_because_scilista_there_are_conflicts(
@@ -387,17 +543,12 @@ class TestMainSendEmail(TestMainBase):
         ]
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
 
     @patch("scilistatest_and_coletaxml.get_registered_issues")
     @patch("scilistatest_and_coletaxml.file_readlines")
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
     def test_main_send_email_with_errors_because_item_is_not_registered(
@@ -419,18 +570,13 @@ class TestMainSendEmail(TestMainBase):
         ]
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
 
     @patch("scilistatest_and_coletaxml.XMLSerial._check_db_status")
     @patch("scilistatest_and_coletaxml.get_registered_issues")
     @patch("scilistatest_and_coletaxml.file_readlines")
-    @patch("scilistatest_and_coletaxml.send_mail")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
     @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
     @patch("scilistatest_and_coletaxml.config_filepath")
     def test_main_send_email_with_errors_because__check_db_status_returned_error(
@@ -443,7 +589,7 @@ class TestMainSendEmail(TestMainBase):
             mock_check_db):
         mock_check_db.return_value = {
             "error_msg":
-            "xmlserial/abc/v1n1/base/v1n1.mst nao encontrada"}
+            "xmlserial/abc/v1n1/base/v1n1.mst nao encontrado"}
         mock_readlines.side_effect = [
             [],
             ["abc v1n1",
@@ -456,10 +602,184 @@ class TestMainSendEmail(TestMainBase):
         ]
         main()
         mock_send_mail.assert_called_once_with(
-            "SciELO TESTE",
-            "marca@example.com", "sysadm@example.com",
-            "infras@example.com, prod@example.com",
             "Erros encontrados",
-            '',
-            "xmlpreproc_outs_msg_email.txt"
         )
+
+
+class TestReportErrors(TestCase):
+
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report_scilistaxml_is_not_found(
+            self, mock_config_filepath, mock_update, mock_send_email):
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(
+            '../serial/scilistaxml.lst vazia ou nao encontrada', errors)
+
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.get_registered_issues")
+    @patch("scilistatest_and_coletaxml.file_readlines")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report_no_issue_is_registered(
+            self,
+            mock_config_filepath,
+            mock_update,
+            mock_readlines,
+            mock_get_registered_issues,
+            mock_send_email,
+            ):
+        mock_readlines.side_effect = [
+            [],
+            ["abc v1n1"],
+        ]
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        mock_get_registered_issues.return_value = []
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(
+            'A base ../serial/issue/issue esta corrompida ou ausente', errors)
+
+    @patch("scilistatest_and_coletaxml.get_registered_issues")
+    @patch("scilistatest_and_coletaxml.file_readlines")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report_scilista_has_repeatition(
+            self,
+            mock_config_filepath,
+            mock_update,
+            mock_send_mail,
+            mock_readlines,
+            mock_get_registered_issues,
+            ):
+        mock_readlines.side_effect = [
+            [],
+            ["abc v1n1",
+             "abc v1n1"],
+        ]
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        mock_get_registered_issues.return_value = [
+            "abc v1n1"
+        ]
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(
+            '../serial/scilistaxml.lst contem itens repetidos', errors)
+
+    @patch("scilistatest_and_coletaxml.get_registered_issues")
+    @patch("scilistatest_and_coletaxml.file_readlines")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report_scilista_there_are_conflicts(
+            self,
+            mock_config_filepath,
+            mock_update,
+            mock_send_mail,
+            mock_readlines,
+            mock_get_registered_issues,
+            ):
+        mock_readlines.side_effect = [
+            [],
+            ["abc v1n1",
+             "abc v1n1 del"
+             ],
+        ]
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        mock_get_registered_issues.return_value = [
+            "abc v1n1"
+        ]
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        expected = (
+            "Encontrados "
+            "'abc v1n1' e 'abc v1n1 del' na scilistaxml. "
+            "Mantenha apenas um. "
+            "Mantenha 'abc v1n1' para atualizar. "
+            "Mantenha 'abc v1n1 del' para nao ser publicado."
+        )
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(expected, errors)
+
+    @patch("scilistatest_and_coletaxml.get_registered_issues")
+    @patch("scilistatest_and_coletaxml.file_readlines")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report_item_is_not_registered(
+            self,
+            mock_config_filepath,
+            mock_update,
+            mock_send_mail,
+            mock_readlines,
+            mock_get_registered_issues,
+            ):
+        mock_readlines.side_effect = [
+            [],
+            ["abc v1n1",
+             ],
+        ]
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        mock_get_registered_issues.return_value = [
+            "abc v1n2"
+        ]
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        expected = (
+            '"abc v1n1" nao esta registrado'
+        )
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(expected, errors)
+
+    @patch("scilistatest_and_coletaxml.XMLSerial._check_db_status")
+    @patch("scilistatest_and_coletaxml.get_registered_issues")
+    @patch("scilistatest_and_coletaxml.file_readlines")
+    @patch("scilistatest_and_coletaxml.Report.send_mail")
+    @patch("scilistatest_and_coletaxml.XMLSerial.make_title_and_issue_updated")
+    @patch("scilistatest_and_coletaxml.config_filepath")
+    def test_report__check_db_status_returned_error(
+            self,
+            mock_config_filepath,
+            mock_update,
+            mock_send_mail,
+            mock_readlines,
+            mock_get_registered_issues,
+            mock_check_db):
+        mock_check_db.return_value = {
+            "error_msg":
+            "xmlserial/abc/v1n1/base/v1n1.mst nao encontrado"}
+        mock_readlines.side_effect = [
+            [],
+            ["abc v1n1",
+             ],
+        ]
+        mock_config_filepath.return_value = (
+            'xml_preproc/xmlpreproc_config.ini.template')
+        mock_get_registered_issues.return_value = [
+            "abc v1n1"
+        ]
+        main()
+        errors = file_read('xmlpreproc_outs_msg_email.txt')
+        expected = (
+            "xmlserial/abc/v1n1/base/v1n1.mst nao encontrado"
+        )
+        self.assertIn(
+            'Foram encontrados erros no procedimento de coleta de XML', errors)
+        self.assertIn(expected, errors)
