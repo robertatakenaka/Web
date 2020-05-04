@@ -128,7 +128,7 @@ class TestXMLSerial(TestCase):
         self.assertEqual(
             result,
             {"error_msg":
-             'Not found fixtures/xmlserial/acron/volnum/base/volnum.mst'})
+             'fixtures/xmlserial/acron/volnum/base/volnum.mst nao encontrado'})
 
     @patch("xml_preproc.xml_serial.XMLSerial.exists")
     def test__check_db_status_returns_items_to_copy(self, mock_exists):
@@ -213,5 +213,7 @@ class TestXMLSerial(TestCase):
                     "fixtures/proc/acron2/n2/base/n2"),
             },
         ]
+
+        expected = (expected, [])
         result = self.xmlserial.check_scilista_items_db(registered_issues)
         self.assertEqual(result, expected)

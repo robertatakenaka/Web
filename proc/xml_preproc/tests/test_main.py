@@ -2,18 +2,37 @@ import os
 from unittest import (
     TestCase,
 )
-from unittest.mock import patch, call
+from unittest.mock import patch, call, Mock
 
 from scilistatest_and_coletaxml import (
     sort_scilista,
     check_scilista_items_are_registered,
-    find_conflicting_items,
     items_to_retry_updating,
     _scilista_info,
     scilista_info,
     main,
     ERROR_FILE,
+    SciListaXML,
 )
+
+
+class TestSciListaXML(TestCase):
+
+    @patch("scilistatest_and_coletaxml.logger.error")
+    def test_find_conflicting_items(self, mock_logger):
+        scilista_items = [
+            "abc 2009naheadpr del",
+            "abc 2009naheadpr",
+        ]
+        scilistaxml = SciListaXML(scilista_items, Mock())
+        scilistaxml._find_conflicting_items()
+        mock_logger.assert_called_once_with((
+            "Encontrados "
+            "'abc 2009naheadpr' e 'abc 2009naheadpr del' na scilistaxml. "
+            "Mantenha 'abc 2009naheadpr' para atualizar. "
+            "Mantenha 'abc 2009naheadpr del' para nao ser publicado."
+            )
+        )
 
 
 class TestMainBase(TestCase):
@@ -65,21 +84,6 @@ class TestMainFunctions(TestMainBase):
         ]
         result = sort_scilista(scilista)
         self.assertEqual(result, expected)
-
-    @patch("scilistatest_and_coletaxml.logger.error")
-    def test_find_conflicting_items(self, mock_logger):
-        scilista_items = [
-            "abc 2009naheadpr del",
-            "abc 2009naheadpr",
-        ]
-        find_conflicting_items(scilista_items)
-        mock_logger.assert_called_once_with((
-            "Encontrados "
-            "'abc 2009naheadpr' e 'abc 2009naheadpr del' na scilistaxml. "
-            "Mantenha 'abc 2009naheadpr' para atualizar. "
-            "Mantenha 'abc 2009naheadpr del' para nao ser publicado."
-            )
-        )
 
     def test_check_scilista_items_are_registered_returns_all(self):
         registered_issues = [

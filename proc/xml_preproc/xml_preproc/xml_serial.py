@@ -183,7 +183,7 @@ class XMLSerial(object):
         xml_db_filepath = db_filename(self.serial_path, acron, issueid)
         xml_mst_filename = xml_db_filepath + '.mst'
         if not self.exists(xml_mst_filename):
-            return {"error_msg": '{} nao encontrada'.format(xml_mst_filename)}
+            return {"error_msg": '{} nao encontrado'.format(xml_mst_filename)}
 
         proc_db_filepath = db_filename(self.proc_serial, acron, issueid)
         proc_mst_filename = proc_db_filepath + '.mst'

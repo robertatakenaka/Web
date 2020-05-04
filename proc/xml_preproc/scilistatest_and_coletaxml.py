@@ -1,8 +1,6 @@
 #!/usr/bin/env python2.7
 # coding: utf-8
 import os
-import time
-import shutil
 import logging
 import logging.config
 
@@ -124,69 +122,37 @@ def items_to_retry_updating(items):
     return try_again
 
 
-def find_conflicting_items(scilistaxml_items):
-    dellist = [i for i in scilistaxml_items if i.endswith("del")]
-    conflicts = []
-    for i in dellist:
-        if i[:-4] in scilistaxml_items:
-            conflicts.append((i[:-4], i))
-            logger.error((
-                "Encontrados '%s' e '%s' na scilistaxml. "
-                "Mantenha '%s' para atualizar. "
-                "Mantenha '%s' para nao ser publicado."
-                ) % (i[:-4], i, i[:-4], i))
-    return conflicts
+class SciListaXML(object):
 
+    def __init__(self, scilistaxml_items, xmlserial):
+        self.scilistaxml_items = scilistaxml_items
+        self.qtd_items = len(scilistaxml_items)
+        self.xmlserial = xmlserial
 
-def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
-    # Garante que title e issue na pasta de processamento estao atualizadas
-    logger.info('Deixa as bases title e issue atualizadas em proc')
-    xmlserial.make_title_and_issue_updated()
+    def _find_conflicting_items(self):
+        dellist = [i for i in self.scilistaxml_items if i.endswith("del")]
+        conflicts = []
+        for i in dellist:
+            if i[:-4] in self.scilistaxml_items:
+                conflicts.append((i[:-4], i))
+                logger.error((
+                    "Encontrados '%s' e '%s' na scilistaxml. "
+                    "Mantenha '%s' para atualizar. "
+                    "Mantenha '%s' para nao ser publicado."
+                    ) % (i[:-4], i, i[:-4], i))
+        return conflicts
 
-    # Verifica se a scilistaxml esta vazia
-    if not scilistaxml_items:
-        logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
-        print('%s vazia ou nao encontrada' % SCILISTA_XML)
-        return
+    def _check_scilista_items_db(self, registered_items):
+        db_items, errors = self.xmlserial.check_scilista_items_db(
+            registered_items)
+        for err in errors:
+            logger.error(err)
+        return db_items
 
-    logger.info(
-        '%s: %i itens na lista' % (SCILISTA_XML, len(scilistaxml_items)))
-
-    # Remove os itens del se tambem ha os mesmos itens para adicionar
-    conflicts = find_conflicting_items(scilistaxml_items)
-    if conflicts:
-        logger.error(('%s contem itens conflitantes. '
-                      'Verificar e enviar novamente.' % SCILISTA_XML))
-
-    # Verificar se ha repeticao
-    sorted_items, repeated = get_sorted_list_and_repeated_items(
-        scilistaxml_items)
-    if repeated:
-        logger.error(('%s contem itens repetidos. '
-                      'Verificar e enviar novamente.' % SCILISTA_XML))
-
-    # Retorna uma lista de issues registrados
-    registered_issues = get_registered_issues()
-    if not registered_issues:
-        logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
-        return
-
-    # Verificar se os itens da scilistaxml sao issues registrados
-    registered_items = check_scilista_items_are_registered(
-        sorted_items, registered_issues)
-    logger.info(
-        '%s: %i itens registrados' % (SCILISTA_XML, len(registered_items)))
-
-    db_items, errors = xmlserial.check_scilista_items_db(registered_items)
-    for err in errors:
-        logger.error(err)
-
-    if repeated or conflicts or len(db_items) < len(scilistaxml_items):
-        return False
-    else:
+    def _get_db_items(self, db_items):
         # estando scilista completamente valida,
         # entao coleta os dados dos issues
-        xmlserial.update_proc_serial(db_items, logger)
+        self.xmlserial.update_proc_serial(db_items)
         # verifica se as bases dos artigos estao presentes na area de proc
         items = deepcopy(db_items)
         for i in range(0, 3):
@@ -194,13 +160,60 @@ def check_scilista_xml_and_coleta_xml(scilistaxml_items, xmlserial):
             if len(items) == 0:
                 break
             # tenta atualizar aquilo que não pode ser atualizado
-            xmlserial.update_proc_serial(items)
+            self.xmlserial.update_proc_serial(items)
         if len(items) > 0:
             logger.error("Coleta incompleta")
             for item in items:
                 for f in item["files_info"]:
                     logger.error('Nao coletado: %s' % f[0])
-        return True
+
+    def check_scilista_xml_and_coleta_xml(self):
+        # Garante que title e issue na pasta de processamento estao atualizadas
+        logger.info('Deixa as bases title e issue atualizadas em proc')
+        self.xmlserial.make_title_and_issue_updated()
+
+        # Verifica se a scilistaxml esta vazia
+        if not self.scilistaxml_items:
+            logger.error('%s vazia ou nao encontrada' % SCILISTA_XML)
+            print('%s vazia ou nao encontrada' % SCILISTA_XML)
+            return
+
+        logger.info(
+            '%s: %i itens na lista' % (
+                SCILISTA_XML, self.qtd_items))
+
+        # Remove os itens del se tambem ha os mesmos itens para adicionar
+        conflicts = self._find_conflicting_items()
+        if conflicts:
+            logger.error(('%s contem itens conflitantes. '
+                          'Verificar e enviar novamente.' % SCILISTA_XML))
+
+        # Verificar se ha repeticao
+        sorted_items, repeated = get_sorted_list_and_repeated_items(
+            self.scilistaxml_items)
+        if repeated:
+            logger.error(('%s contem itens repetidos. '
+                          'Verificar e enviar novamente.' % SCILISTA_XML))
+
+        # Retorna uma lista de issues registrados
+        registered_issues = get_registered_issues()
+        if not registered_issues:
+            logger.error("A base %s esta corrompida ou ausente" % PROCISSUEDB)
+            return
+
+        # Verificar se os itens da scilistaxml sao issues registrados
+        registered_items = check_scilista_items_are_registered(
+            sorted_items, registered_issues)
+        logger.info(
+            '%s: %i itens registrados' % (SCILISTA_XML, len(registered_items)))
+
+        db_items = self._check_scilista_items_db(registered_items)
+
+        if repeated or conflicts or len(db_items) < self.qtd_items:
+            return False
+        else:
+            self._get_db_items(db_items)
+            return True
 
 
 def scilista_info(name, scilista_items):
@@ -366,7 +379,8 @@ def main():
 
     xml_scilista_items = file_readlines(SCILISTA_XML)
     xmlserial = XMLSerial(CONFIG, PROC_SERIAL_LOCATION)
-    if check_scilista_xml_and_coleta_xml(xml_scilista_items, xmlserial):
+    scilistaxml = SciListaXML(xml_scilista_items, xmlserial)
+    if scilistaxml.check_scilista_xml_and_coleta_xml():
         # atualiza a scilista na area de processamento
         join_scilistas_and_update_scilista_file(
             xml_scilista_items, htm_scilista_items)
